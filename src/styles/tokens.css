@@ -1,0 +1,56 @@
+/* src/styles/tokens.css
+   Design tokens only (no element/tag styling).
+*/
+:root {
+  /* --- Color system --- */
+  --bg0: #020308;      /* deep base */
+  --bg1: #111827;      /* top radial */
+  --panel: #0b1220;    /* card surface */
+  --panel2: #070b10;   /* deeper surface */
+  --text: #f5f7fb;
+  --muted: #a5b0c5;
+
+  --accent: #38bdf8;   /* sky-400 */
+  --accent2: #0ea5e9;  /* sky-500 */
+  --ok: #10b981;       /* emerald-500 */
+  --warn: #f59e0b;     /* amber-500 */
+  --bad: #f43f5e;      /* rose-500 */
+
+  /* --- Borders & overlays --- */
+  --border: rgba(255, 255, 255, 0.10);
+  --border2: rgba(255, 255, 255, 0.14);
+  --overlay-1: rgba(255, 255, 255, 0.01);
+  --overlay-2: rgba(255, 255, 255, 0.02);
+  --overlay-3: rgba(255, 255, 255, 0.03);
+
+  /* --- Radius --- */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  /* --- Shadows --- */
+  --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.55);
+
+  /* --- Spacing scale (optional) --- */
+  --s-1: 6px;
+  --s-2: 10px;
+  --s-3: 14px;
+  --s-4: 18px;
+  --s-5: 22px;
+  --s-6: 28px;
+
+  /* --- Typography --- */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
+
+  /* --- Letter spacing for “Swiss-ish” caps --- */
+  --track-1: 0.14em;
+  --track-2: 0.16em;
+  --track-3: 0.18em;
+
+  /* --- Data viz thresholds (POC defaults) --- */
+  --rh-low: 66.5;
+  --rh-high: 72.5;
+}

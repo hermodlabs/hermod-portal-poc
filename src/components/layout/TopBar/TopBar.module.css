@@ -1,0 +1,35 @@
+.wrap {
+  border-bottom: 1px solid var(--border);
+}
+
+.inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 24px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.kicker {
+  font-size: 12px;
+  letter-spacing: var(--track-3);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.title {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}

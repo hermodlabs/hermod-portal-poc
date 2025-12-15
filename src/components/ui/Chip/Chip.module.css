@@ -1,0 +1,45 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--overlay-3);
+
+  font-size: 11px;
+  letter-spacing: var(--track-2);
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.icon {
+  opacity: 0.9;
+}
+
+.chip_neutral { }
+
+.chip_accent {
+  border-color: rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.10);
+  color: #bfefff;
+}
+
+.chip_ok {
+  border-color: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.10);
+  color: #b9f6df;
+}
+
+.chip_warn {
+  border-color: rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.10);
+  color: #ffe7b3;
+}
+
+.chip_bad {
+  border-color: rgba(244, 63, 94, 0.25);
+  background: rgba(244, 63, 94, 0.10);
+  color: #ffd0da;
+}

@@ -1,0 +1,38 @@
+.wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.thead {
+  background: var(--overlay-3);
+}
+
+.th {
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: var(--track-2);
+  text-transform: uppercase;
+  color: var(--muted);
+  border-top: none;
+}
+
+.tr {
+  border-top: 1px solid var(--border);
+}
+
+.td {
+  padding: 12px 14px;
+  color: var(--text);
+}
+
+.tbody .td {
+  color: rgba(245, 247, 251, 0.90);
+}

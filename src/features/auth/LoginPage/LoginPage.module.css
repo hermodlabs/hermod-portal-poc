@@ -1,0 +1,138 @@
+.page {
+  padding: 70px 0;
+}
+
+.container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.kicker {
+  font-size: 12px;
+  letter-spacing: var(--track-3);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.h1 {
+  margin: 12px 0 0;
+  font-size: 42px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.lead {
+  margin-top: 12px;
+  max-width: 760px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.grid {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.box {
+  border: 1px solid var(--border);
+  background: var(--overlay-2);
+  border-radius: var(--r-xl);
+  padding: 22px;
+}
+
+.boxAlt {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(2, 6, 23, 0.7));
+  box-shadow: var(--shadow-soft);
+}
+
+.label {
+  display: block;
+  margin-top: 14px;
+}
+
+.labelText {
+  font-size: 12px;
+  letter-spacing: var(--track-2);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.input {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: rgba(2, 6, 23, 0.55);
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.note {
+  margin-top: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.lead2 {
+  margin-top: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.rows {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.rowIcon {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.rowTitle {
+  font-weight: 650;
+  color: rgba(245, 247, 251, 0.95);
+}
+
+.rowBody {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 22px 0;
+  margin-top: 22px;
+  color: rgba(165, 176, 197, 0.85);
+  font-size: 12px;
+  letter-spacing: var(--track-3);
+  text-transform: uppercase;
+}
+
+@media (max-width: 980px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
