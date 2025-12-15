@@ -8,7 +8,7 @@ import { StatTile } from "../../components/ui/StatTile/StatTile.jsx";
 import { FieldGrid } from "../../components/viz/FieldGrid/FieldGrid.jsx";
 
 import { percent } from "../../lib/utils.js";
-import { healthToneFromAlerts } from "../../features/room/thresholds.js";
+import { healthToneFromAlerts } from "../../features/navigation/thresholds.js";
 
 export default function DashboardPage({ model }) {
   if (!model) return null;
