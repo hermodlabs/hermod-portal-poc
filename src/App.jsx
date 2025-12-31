@@ -23,41 +23,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
-// ---------- utils ----------
-const cx = (...xs) => xs.filter(Boolean).join(" ");
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const lerp = (a, b, t) => a + (b - a) * t;
-
-function mulberry32(seed) {
-  let t = seed >>> 0;
-  return function () {
-    t += 0x6d2b79f5;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function fmtTime(mins) {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  const ap = h >= 12 ? "PM" : "AM";
-  const hh = ((h + 11) % 12) + 1;
-  return `${hh}:${m.toString().padStart(2, "0")} ${ap}`;
-}
-const percent = (v) => `${v.toFixed(1)}%`;
-
-function humidityColor(h) {
-  const t = clamp((h - 62) / 12, 0, 1);
-  return `rgba(56, 189, 248, ${0.12 + 0.32 * t})`;
-}
-
-function zoneName(x, y, w, h) {
-  const col = x < w / 3 ? "Door-side" : x < (2 * w) / 3 ? "Center" : "Back";
-  const row = y < h / 3 ? "Upper" : y < (2 * h) / 3 ? "Middle" : "Lower";
-  return `${row} · ${col}`;
-}
+import {cx} from "/src/module/algorithm/ui/classnames"; 
+import {clamp, lerp} from "/src/module/algorithm/core/math"; 
+import {mulberry32} from "/src/module/algorithm/core/rng";
+import {fmtTime} from "/src/module/algorithm/domain/time"
+import {percent} from "/src/module/algorithm/domain/number"
+import {humidityColor} from "/src/module/algorithm/format/humidity/color"
+import {zoneName} from "/src/module/algorithm/format/zones/naming"
 
 // ---------- simulated model ----------
 function simulateField({ w, h, z, tMin, doorIntensity, fanMix, seed }) {

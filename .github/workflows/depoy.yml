@@ -32,6 +32,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Inspect build output
+        run: |
+          echo "PWD=$(pwd)"
+          ls -la
+          echo "---- dist ----"
+          ls -la dist || true
+          echo "---- build ----"
+          ls -la build || true
+          test -f dist/index.html && echo "dist/index.html exists" || echo "dist/index.html missing"
+          test -f build/index.html && echo "build/index.html exists" || echo "build/index.html missing"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
