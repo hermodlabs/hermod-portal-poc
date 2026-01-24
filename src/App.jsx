@@ -44,6 +44,15 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+import {
+  Map as MapIcon,
+  MapPin,
+  Layers as LayersIcon,
+  ListOrdered,
+  Compass,
+  Target,
+} from "lucide-react";
+
 
 /**
  * Slice 0 — Skeleton (must ship together)
@@ -201,6 +210,7 @@ function makeSeedData() {
     },
   ];
 
+
   const runs = [
     {
       id: "run-001",
@@ -250,7 +260,129 @@ function makeSeedData() {
     },
   ];
 
-  return { sites, users, roles, cases, runs, receipts };
+
+  // Add a layout baseline for each room you care about (at least the demo room)
+  const layouts = [
+    {
+      id: "layout-001",
+      siteId: "site-001",
+      roomId: "room-001",
+      name: "Walk-in Humidor layout (baseline)",
+      createdAt: "Today",
+      // simple grid floorplan (POC): 20x12 cells
+      grid: { w: 20, h: 12 },
+      // anchors / landmarks (for “walk to this spot”)
+      landmarks: [
+        { id: "lm-door", label: "Door", x: 1, y: 6 },
+        { id: "lm-vent", label: "Supply vent", x: 16, y: 2 },
+        { id: "lm-shelf", label: "Shelf block", x: 13, y: 8 },
+      ],
+      // zones (baseline segmentation). In real life this is derived; here it’s manual.
+      zones: [
+        { id: "Z1", label: "Stable band", x0: 2, y0: 2, x1: 8, y1: 9 },
+        { id: "Z2", label: "Door corridor", x0: 0, y0: 3, x1: 3, y1: 9 },
+        { id: "Z3", label: "SE pocket-prone", x0: 12, y0: 6, x1: 19, y1: 11 },
+      ],
+    },
+  ];
+
+  // Canonical: pockets live on the RUN (then case consumes them)
+  const runPockets = [
+    {
+      id: "p-001",
+      runId: "run-001",
+      roomId: "room-001",
+      siteId: "site-001",
+      label: "P-01",
+      title: "SE shelf pocket",
+      // anchor: map coordinate (cell)
+      x: 14,
+      y: 8,
+      // ranking fields
+      severity: 0.82, // 0..1
+      persistenceMin: 42,
+      repeatability: 0.74,
+      trigger: "Door cycle",
+      note: "Repeat offender near shelf block; worsens after traffic bursts.",
+      rec: "Avoid long-age inventory here until verified stable; consider airflow staging.",
+    },
+    {
+      id: "p-002",
+      runId: "run-001",
+      roomId: "room-001",
+      siteId: "site-001",
+      label: "P-02",
+      title: "Vent shadow zone",
+      x: 16,
+      y: 3,
+      severity: 0.63,
+      persistenceMin: 28,
+      repeatability: 0.55,
+      trigger: "HVAC cycle",
+      note: "Localized drift following HVAC cycle; potential stratification.",
+      rec: "Add temporary sensor at canopy height; verify after HVAC trigger windows.",
+    },
+    {
+      id: "p-003",
+      runId: "run-001",
+      roomId: "room-001",
+      siteId: "site-001",
+      label: "P-03",
+      title: "Door corridor edge",
+      x: 3,
+      y: 6,
+      severity: 0.51,
+      persistenceMin: 18,
+      repeatability: 0.61,
+      trigger: "Door cycle",
+      note: "Edge of corridor shows variability; not always harmful, but volatile.",
+      rec: "Use for quick-turn only; don’t treat as stable storage.",
+    },
+  ];
+
+  // Optional map derived per run (can be identical to layout baseline in POC)
+  const runMaps = [
+    {
+      id: "map-001",
+      runId: "run-001",
+      roomId: "room-001",
+      siteId: "site-001",
+      createdAt: "Today",
+      // map is a 2D field; in POC we generate a deterministic heat field
+      field: buildDemoMapField(20, 12, 7), // seed=7
+    },
+  ];
+
+  return { sites, users, roles, cases, runs, receipts,
+    layouts, runPockets, runMaps };
+};
+
+function buildDemoMapField(w, h, seed = 1) {
+  // deterministic-ish simple noise (no external deps)
+  let t = seed >>> 0;
+  const rng = () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+
+  // values roughly 0..1 (higher = “worse” pocket risk)
+  const field = Array.from({ length: h }, (_, y) =>
+    Array.from({ length: w }, (_, x) => {
+      const base = 0.25 + 0.15 * (x / (w - 1)) + 0.08 * (y / (h - 1));
+      // add a “SE pocket” bump
+      const dx = x - Math.floor(w * 0.72);
+      const dy = y - Math.floor(h * 0.68);
+      const bump = Math.exp(-(dx * dx + dy * dy) / 18) * 0.55;
+      const noise = (rng() - 0.5) * 0.12;
+      return clamp01(base + bump + noise);
+    })
+  );
+  return field;
+}
+function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
 }
 
 function buildDemoTimeline() {
@@ -361,17 +493,24 @@ function parseRoute(route) {
   if (parts.length === 0) return r;
 
   if (parts[0] === "overview") return { page: "overview", params: {} };
+
+  // Extend sites/rooms:
   if (parts[0] === "sites") {
     if (parts.length === 1) return { page: "sites", params: {} };
     const siteId = parts[1];
     if (parts.length === 2) return { page: "site", params: { siteId } };
+
     if (parts[2] === "rooms") {
       if (parts.length === 3) return { page: "rooms", params: { siteId } };
       const roomId = parts[3];
       if (parts.length === 4) return { page: "room", params: { siteId, roomId } };
       if (parts[4] === "summary") return { page: "roomSummary", params: { siteId, roomId } };
+
+      // SLICE 4:
+      if (parts[4] === "layout") return { page: "roomLayout", params: { siteId, roomId } };
     }
   }
+
   if (parts[0] === "settings") {
     if (parts[1] === "users") return { page: "settingsUsers", params: {} };
     if (parts[1] === "roles") return { page: "settingsRoles", params: {} };
@@ -394,6 +533,9 @@ function parseRoute(route) {
     if (parts[2] === "baseline") return { page: "caseBaseline", params: { caseId } };
     if (parts[2] === "triggers") return { page: "caseTriggers", params: { caseId } };
 
+    // SLICE 4:
+    if (parts[2] === "pockets") return { page: "casePockets", params: { caseId } };
+
     return { page: "case", params: { caseId } };
   }
 
@@ -412,6 +554,10 @@ function parseRoute(route) {
 
     // SLICE 3:
     if (parts[2] === "timeline") return { page: "runTimeline", params: { runId } };
+
+    // SLICE 4:
+    if (parts[2] === "pockets") return { page: "runPockets", params: { runId } };
+    if (parts[2] === "map") return { page: "runMap", params: { runId } };
 
     return { page: "runProvenance", params: { runId } };
   }
@@ -621,6 +767,11 @@ export default function Slice0SkeletonPOC() {
     [data.receipts, r.params.receiptId]
   );
 
+  const currentLayout = useMemo(() => {
+    if (!r.params.siteId || !r.params.roomId) return null;
+    return data.layouts?.find((l) => l.siteId === r.params.siteId && l.roomId === r.params.roomId) || null;
+  }, [data.layouts, r.params.siteId, r.params.roomId]);
+
   function go(to) {
     setRoute(to);
   }
@@ -769,6 +920,19 @@ export default function Slice0SkeletonPOC() {
             {r.page === "caseBaseline" && <CaseBaselinePage data={data} setData={setData} onGo={go} theCase={currentCase} />}
             {r.page === "caseTriggers" && <CaseTriggersPage data={data} setData={setData} onGo={go} theCase={currentCase} />}
 
+            {r.page === "roomLayout" && (
+              <RoomLayoutPage data={data} setData={setData} onGo={go} site={site} room={room} layout={currentLayout} />
+            )}
+            {r.page === "casePockets" && (
+              <CasePocketsPage data={data} setData={setData} onGo={go} theCase={currentCase} />
+            )}
+            {r.page === "runPockets" && (
+              <RunPocketsPage data={data} setData={setData} onGo={go} run={currentRun} />
+            )}
+            {r.page === "runMap" && (
+              <RunMapPage data={data} setData={setData} onGo={go} run={currentRun} />
+            )}
+
             {/* fallback */}
             {[
               "overview",
@@ -795,6 +959,11 @@ export default function Slice0SkeletonPOC() {
               "runTimeline",
               "caseBaseline",
               "caseTriggers",
+
+              "roomLayout",
+              "casePockets",
+              "runPockets",
+              "runMap",
             ].includes(r.page) ? null : (
               <OverviewPage onGo={go} sites={data.sites} />
             )}
@@ -1086,6 +1255,11 @@ function RoomDetailPage({ site, room, onGo }) {
             <button className="btn btn--primary" onClick={() => onGo(`/sites/${site.id}/rooms/${room.id}/summary`)}>
               <span className="row" style={{ gap: 8 }}>
                 <LayoutDashboard size={14} /> Room summary
+              </span>
+            </button>
+            <button className="btn" onClick={() => onGo(`/sites/${site.id}/rooms/${room.id}/layout`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <MapIcon size={14} /> Layout
               </span>
             </button>
             <button className="btn" onClick={() => onGo(`/sites/${site.id}/rooms`)}>
@@ -1547,6 +1721,12 @@ function CaseDetailPage({ data, setData, onGo, theCase }) {
             <button className="btn btn--primary" onClick={() => onGo(`/cases/${theCase.id}/define`)}>
               <span className="row" style={{ gap: 8 }}>
                 <Tag size={14} /> Define slice
+              </span>
+            </button>
+
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/pockets`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ListOrdered size={14} /> Pockets
               </span>
             </button>
 
@@ -2178,6 +2358,18 @@ function RunProvenancePage({ data, setData, onGo, run }) {
                   <ShieldAlert size={14} /> Continue to gates
                 </span>
               </button>
+
+<button className="btn" onClick={() => onGo(`/runs/${run.id}/map`)}>
+  <span className="row" style={{ gap: 8 }}>
+    <MapIcon size={14} /> Map
+  </span>
+</button>
+
+<button className="btn" onClick={() => onGo(`/runs/${run.id}/pockets`)}>
+  <span className="row" style={{ gap: 8 }}>
+    <ListOrdered size={14} /> Pockets
+  </span>
+</button>
   <button className="btn" onClick={() => onGo(`/runs/${run.id}/timeline`)}>
     <span className="row" style={{ gap: 8 }}>
       <CalendarClock size={14} /> Timeline
@@ -3087,6 +3279,545 @@ function CaseTriggersPage({ data, setData, onGo, theCase }) {
   );
 }
 
+function RoomLayoutPage({ data, setData, onGo, site, room, layout }) {
+  if (!site || !room) {
+    return (
+      <Panel meta="Error" title="Room not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a site + room to show layout.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/sites")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const L =
+    layout ||
+    (data.layouts || []).find((x) => x.siteId === site.id && x.roomId === room.id) ||
+    null;
+
+  const pocketsForRoom = (data.runPockets || []).filter((p) => p.siteId === site.id && p.roomId === room.id);
+  const top = pocketsForRoom
+    .slice()
+    .sort((a, b) => scorePocket(b) - scorePocket(a))
+    .slice(0, 3);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/sites/${site.id}/rooms/${room.id}/layout`}
+        title="Room layout (baseline)"
+        subtitle="Slice 4: layout anchors “where.” Zones + landmarks make pockets walkable."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <Compass size={14} /> anchor
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/sites/${site.id}/rooms/${room.id}`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      {!L ? (
+        <Panel meta="Missing" title="No layout yet" right={<Chip tone="warn">placeholder</Chip>}>
+          <div className="text">
+            Create a layout baseline for this room so pockets can be anchored.
+          </div>
+        </Panel>
+      ) : (
+        <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+          <Panel meta="Map" title={`${room.name} layout`} right={<Chip>{L.grid.w}×{L.grid.h}</Chip>}>
+            <LayoutMap
+              w={L.grid.w}
+              h={L.grid.h}
+              zones={L.zones}
+              landmarks={L.landmarks}
+              pockets={top}
+            />
+            <div className="hr" />
+            <div className="text">
+              Zones are baseline segments; landmarks are operator reality. Together they make “walk-to-this-spot” possible.
+            </div>
+          </Panel>
+
+          <Panel meta="Top pockets" title="Ranked (room)" right={<Chip tone="accent">{top.length}</Chip>}>
+            {top.length === 0 ? (
+              <div className="text">No pockets for this room yet. Run a scan (Slice 4 on a run).</div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {top.map((p) => (
+                  <PocketCard
+                    key={p.id}
+                    pocket={p}
+                    onClick={() => onGo(`/runs/${p.runId}/pockets`)}
+                    hint="Open run pockets"
+                  />
+                ))}
+              </div>
+            )}
+            <div className="hr" />
+            <button className="btn btn--primary" onClick={() => onGo(`/cases/${findCaseForRoom(data, site.id, room.id) || "case-001"}/pockets`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ListOrdered size={14} /> Go to case pockets
+              </span>
+            </button>
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CasePocketsPage({ data, setData, onGo, theCase }) {
+  if (!theCase) {
+    return (
+      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a case object to show pockets.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const layout = (data.layouts || []).find((l) => l.siteId === theCase.siteId && l.roomId === theCase.roomId) || null;
+  const baselineRun = data.runs.find((r) => r.id === theCase.baselineRunId) || null;
+
+  // Source of truth: run pockets (use baseline run if present; else evidence run)
+  const sourceRunId = baselineRun?.id || theCase.evidenceRunId;
+  const pockets = (data.runPockets || [])
+    .filter((p) => p.runId === sourceRunId)
+    .slice()
+    .sort((a, b) => scorePocket(b) - scorePocket(a));
+
+  const top = pockets.slice(0, 6);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/cases/${theCase.id}/pockets`}
+        title="Pockets (ranked + walkable)"
+        subtitle="Slice 4: ranked list + anchored map. No map = not walkable. No rank = not actionable."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <MapPin size={14} /> walk-to
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Map" title="Pocket map" right={<Chip tone={layout ? "ok" : "warn"}>{layout ? "anchored" : "missing layout"}</Chip>}>
+          {!layout ? (
+            <div className="box" style={{ padding: 14 }}>
+              <div className="kicker">Layout required</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                You can’t walk to a pocket without a layout anchor. Create/visit:
+                <div style={{ marginTop: 10 }}>
+                  <button className="btn btn--primary" onClick={() => onGo(`/sites/${theCase.siteId}/rooms/${theCase.roomId}/layout`)}>
+                    <span className="row" style={{ gap: 8 }}>
+                      <MapIcon size={14} /> Open room layout
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <LayoutMap
+              w={layout.grid.w}
+              h={layout.grid.h}
+              zones={layout.zones}
+              landmarks={layout.landmarks}
+              pockets={top}
+              onPocketClick={(p) => onGo(`/runs/${p.runId}/pockets`)}
+            />
+          )}
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/sites/${theCase.siteId}/rooms/${theCase.roomId}/layout`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <Compass size={14} /> Layout
+              </span>
+            </button>
+
+            {sourceRunId && (
+              <button className="btn" onClick={() => onGo(`/runs/${sourceRunId}/map`)}>
+                <span className="row" style={{ gap: 8 }}>
+                  <MapIcon size={14} /> Run map
+                </span>
+              </button>
+            )}
+
+            {sourceRunId && (
+              <button className="btn" onClick={() => onGo(`/runs/${sourceRunId}/pockets`)}>
+                <span className="row" style={{ gap: 8 }}>
+                  <ListOrdered size={14} /> Run pockets
+                </span>
+              </button>
+            )}
+          </div>
+        </Panel>
+
+        <Panel meta="Ranked" title="Pocket list (actionable)" right={<Chip>{pockets.length}</Chip>}>
+          {pockets.length === 0 ? (
+            <div className="text">No pockets yet for the selected run. Add pockets to /runs/:runId/pockets.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {pockets.map((p) => (
+                <PocketCard
+                  key={p.id}
+                  pocket={p}
+                  onClick={() => onGo(`/runs/${p.runId}/pockets`)}
+                  hint="Open run pockets"
+                />
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function RunPocketsPage({ data, setData, onGo, run }) {
+  if (!run) {
+    return (
+      <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a run object to show pockets.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/runs/new")}>Create run</button>
+      </Panel>
+    );
+  }
+
+  const layout = (data.layouts || []).find((l) => l.siteId === run.siteId && l.roomId === run.roomId) || null;
+
+  const pockets = (data.runPockets || [])
+    .filter((p) => p.runId === run.id)
+    .slice()
+    .sort((a, b) => scorePocket(b) - scorePocket(a));
+
+  function addPocket() {
+    const id = makeId("p");
+    const x = 2 + Math.floor(Math.random() * 16);
+    const y = 2 + Math.floor(Math.random() * 8);
+    const p = {
+      id,
+      runId: run.id,
+      roomId: run.roomId,
+      siteId: run.siteId,
+      label: `P-${String(1 + pockets.length).padStart(2, "0")}`,
+      title: "New pocket (log)",
+      x,
+      y,
+      severity: Math.round((0.35 + Math.random() * 0.6) * 100) / 100,
+      persistenceMin: 10 + Math.floor(Math.random() * 55),
+      repeatability: Math.round((0.35 + Math.random() * 0.6) * 100) / 100,
+      trigger: "Door cycle",
+      note: "Logged in demo.",
+      rec: "Add temporary sensor; re-check on comparable trigger window.",
+    };
+
+    setData((d) => ({ ...d, runPockets: [p, ...(d.runPockets || [])] }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/runs/${run.id}/pockets`}
+        title="Run pockets (source of truth)"
+        subtitle="Slice 4: pockets originate on a run, then cases consume them. Rank + anchor makes it operational."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <Target size={14} /> pockets
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/runs/${run.id}/provenance`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Map" title="Overlay (top pockets)" right={<Chip tone={layout ? "ok" : "warn"}>{layout ? "anchored" : "needs layout"}</Chip>}>
+          {!layout ? (
+            <div className="box" style={{ padding: 14 }}>
+              <div className="kicker">Layout required</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                Create/visit layout to make pockets walkable.
+              </div>
+              <div className="hr" />
+              <button className="btn btn--primary" onClick={() => onGo(`/sites/${run.siteId}/rooms/${run.roomId}/layout`)}>
+                <span className="row" style={{ gap: 8 }}>
+                  <MapIcon size={14} /> Open layout
+                </span>
+              </button>
+            </div>
+          ) : (
+            <LayoutMap
+              w={layout.grid.w}
+              h={layout.grid.h}
+              zones={layout.zones}
+              landmarks={layout.landmarks}
+              pockets={pockets.slice(0, 6)}
+            />
+          )}
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/runs/${run.id}/map`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <MapIcon size={14} /> Run map
+              </span>
+            </button>
+            <button className="btn btn--primary" onClick={addPocket}>
+              <span className="row" style={{ gap: 8 }}>
+                <MapPin size={14} /> Add pocket
+              </span>
+            </button>
+          </div>
+        </Panel>
+
+        <Panel meta="Ranked" title="Pocket list" right={<Chip>{pockets.length}</Chip>}>
+          {pockets.length === 0 ? (
+            <div className="text">No pockets yet. Add one to demonstrate the list→map coupling.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {pockets.map((p) => (
+                <PocketCard key={p.id} pocket={p} onClick={() => onGo(`/runs/${run.id}/map`)} hint="Open map" />
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function RunMapPage({ data, setData, onGo, run }) {
+  if (!run) {
+    return (
+      <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a run object to show map.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/runs/new")}>Create run</button>
+      </Panel>
+    );
+  }
+
+  const layout = (data.layouts || []).find((l) => l.siteId === run.siteId && l.roomId === run.roomId) || null;
+  const map = (data.runMaps || []).find((m) => m.runId === run.id) || null;
+  const pockets = (data.runPockets || []).filter((p) => p.runId === run.id).slice().sort((a,b)=>scorePocket(b)-scorePocket(a));
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/runs/${run.id}/map`}
+        title="Run map (field + pockets)"
+        subtitle="Slice 4 optional route: run-derived field map. Still anchored by layout + pockets."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <MapIcon size={14} /> map
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/runs/${run.id}/provenance`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <Panel meta="Field" title="Map view" right={<Chip tone={layout ? "ok" : "warn"}>{layout ? "anchored" : "needs layout"}</Chip>}>
+        {!layout ? (
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Layout required</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              Without layout, the map can’t tell you where to walk.
+            </div>
+            <div className="hr" />
+            <button className="btn btn--primary" onClick={() => onGo(`/sites/${run.siteId}/rooms/${run.roomId}/layout`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <Compass size={14} /> Open layout
+              </span>
+            </button>
+          </div>
+        ) : (
+          <FieldMap
+            w={layout.grid.w}
+            h={layout.grid.h}
+            field={map?.field}
+            pockets={pockets.slice(0, 8)}
+          />
+        )}
+
+        <div className="hr" />
+
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <button className="btn" onClick={() => onGo(`/runs/${run.id}/pockets`)}>
+            <span className="row" style={{ gap: 8 }}>
+              <ListOrdered size={14} /> Pockets
+            </span>
+          </button>
+          {run.caseId && (
+            <button className="btn" onClick={() => onGo(`/cases/${run.caseId}/pockets`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <MapPin size={14} /> Case pockets
+              </span>
+            </button>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+/* =========================================================
+   G) COMPONENTS — map renderers + pocket card
+   ========================================================= */
+
+function LayoutMap({ w, h, zones = [], landmarks = [], pockets = [], onPocketClick }) {
+  // simple CSS grid; zones are translucent overlays; pockets are pins
+  return (
+    <div className="layoutMap" style={{ gridTemplateColumns: `repeat(${w}, minmax(0, 1fr))` }}>
+      {Array.from({ length: w * h }).map((_, i) => (
+        <div key={i} className="cell2" />
+      ))}
+
+      {/* zones */}
+      {zones.map((z) => (
+        <div
+          key={z.id}
+          className="zoneBox"
+          style={{
+            gridColumn: `${z.x0 + 1} / ${z.x1 + 2}`,
+            gridRow: `${z.y0 + 1} / ${z.y1 + 2}`,
+          }}
+          title={`${z.id} · ${z.label}`}
+        >
+          <div className="zoneLabel">{z.id}</div>
+        </div>
+      ))}
+
+      {/* landmarks */}
+      {landmarks.map((lm) => (
+        <div
+          key={lm.id}
+          className="lm"
+          style={{ gridColumn: lm.x + 1, gridRow: lm.y + 1 }}
+          title={lm.label}
+        >
+          <span className="lmDot" />
+        </div>
+      ))}
+
+      {/* pockets */}
+      {pockets.map((p) => (
+        <button
+          key={p.id}
+          className="pocketPin"
+          style={{ gridColumn: p.x + 1, gridRow: p.y + 1 }}
+          title={`${p.label} · ${p.title}`}
+          onClick={() => onPocketClick && onPocketClick(p)}
+        >
+          <span className="pinDot" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FieldMap({ w, h, field, pockets = [] }) {
+  const F = field || Array.from({ length: h }, () => Array.from({ length: w }, () => 0.25));
+  return (
+    <div className="layoutMap" style={{ gridTemplateColumns: `repeat(${w}, minmax(0, 1fr))` }}>
+      {F.flatMap((row, y) =>
+        row.map((v, x) => (
+          <div
+            key={`${x}-${y}`}
+            className="cell2"
+            style={{ background: riskColor(v) }}
+            title={`risk ${(v * 100).toFixed(0)}%`}
+          />
+        ))
+      )}
+
+      {pockets.map((p) => (
+        <div
+          key={p.id}
+          className="pocketPin pocketPin--static"
+          style={{ gridColumn: p.x + 1, gridRow: p.y + 1 }}
+          title={`${p.label} · ${p.title}`}
+        >
+          <span className="pinDot" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function riskColor(v) {
+  // 0..1 → cool to warm (still within your vibe)
+  const hue = 210 - v * 165; // 210 (blue) → ~45 (amber)
+  const sat = 75;
+  const light = 26 + v * 18;
+  return `hsl(${hue} ${sat}% ${light}%)`;
+}
+
+function scorePocket(p) {
+  // simple rank score; tweak later
+  return (p.severity || 0) * 0.55 + (p.repeatability || 0) * 0.30 + clamp01((p.persistenceMin || 0) / 60) * 0.15;
+}
+
+function PocketCard({ pocket, onClick, hint }) {
+  return (
+    <button className="taskRow" onClick={onClick}>
+      <div className="row" style={{ gap: 10 }}>
+        <div className="taskIcon">
+          <MapPin size={16} />
+        </div>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontWeight: 750 }}>
+            {pocket.label} · {pocket.title}
+          </div>
+          <div className="kicker" style={{ marginTop: 4 }}>
+            trigger: {pocket.trigger} · persist: {pocket.persistenceMin}m · repeat: {Math.round((pocket.repeatability || 0) * 100)}%
+          </div>
+          <div className="text" style={{ marginTop: 8, color: "var(--muted)" }}>
+            {pocket.note}
+          </div>
+        </div>
+      </div>
+
+      <div className="row" style={{ gap: 10 }}>
+        <Chip tone={pocket.severity > 0.75 ? "warn" : "neutral"}>{Math.round(pocket.severity * 100)}%</Chip>
+        <span className="taskHint">
+          {hint || "Open"} <ArrowRight size={14} />
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function findCaseForRoom(data, siteId, roomId) {
+  return (data.cases || []).find((c) => c.siteId === siteId && c.roomId === roomId)?.id || null;
+}
+
 /* =========================================================
    8) Optional: CSS tweaks (if you want select styling)
    ========================================================= */
@@ -3337,6 +4068,62 @@ a{ color: inherit; }
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(2,6,23,.25);
+}
+
+.layoutMap{
+  display:grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(2,6,23,.32);
+  position: relative;
+}
+.cell2{
+  border-radius: 8px;
+  aspect-ratio: 1 / 1;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(2,6,23,.22);
+}
+.zoneBox{
+  border-radius: 14px;
+  border: 1px solid rgba(56,189,248,.22);
+  background: rgba(56,189,248,.06);
+  position: relative;
+}
+.zoneLabel{
+  position:absolute;
+  top: 6px; left: 8px;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgba(148,163,184,.85);
+}
+.lm{
+  display:flex; align-items:center; justify-content:center;
+  pointer-events:none;
+}
+.lmDot{
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: rgba(226,232,240,.70);
+  box-shadow: 0 0 0 4px rgba(226,232,240,.08);
+}
+.pocketPin{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.pocketPin--static{ cursor: default; }
+.pinDot{
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  background: rgba(251,191,36,.85);
+  box-shadow: 0 0 0 5px rgba(251,191,36,.10);
 }
 `}</style>
   );
