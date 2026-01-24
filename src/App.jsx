@@ -22,6 +22,28 @@ import {
   Timer,
   Layers,
 } from "lucide-react";
+import {
+  Ban,
+  CheckCircle2,
+  HelpCircle,
+  ShieldAlert,
+  ShieldX,
+  UploadCloud,
+  FileText,
+  Fingerprint,
+  Database,
+  ClipboardCheck,
+  ArrowLeft,
+} from "lucide-react";
+
+import {
+  CalendarClock,
+  Link2,
+  Waves,
+  ListChecks,
+  ChevronRight,
+} from "lucide-react";
+
 
 /**
  * Slice 0 — Skeleton (must ship together)
@@ -41,6 +63,20 @@ import {
 // tiny utils
 // -----------------------------
 const cx = (...xs) => xs.filter(Boolean).join(" ");
+
+function parseWindowToMin(W) {
+  if (!W) return null;
+  const s = String(W).trim().toLowerCase();
+  if (s.endsWith("m")) return parseInt(s, 10);
+  if (s.endsWith("h")) return parseInt(s, 10) * 60;
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+}
+function clampInt(x, a, b) {
+  const n = parseInt(x, 10);
+  if (!Number.isFinite(n)) return a;
+  return Math.max(a, Math.min(b, n));
+}
 
 function Chip({ tone = "neutral", children }) {
   return (
@@ -132,29 +168,108 @@ function makeSeedData() {
     { id: "r-view", name: "Viewer", desc: "Read-only access to rooms and reports." },
   ];
 
-  // Slice 1 objects: “Case” exists even if analysis does not.
   const cases = [
     {
       id: "case-001",
       title: "Door corridor dry band (baseline)",
-      status: "defining", // "defining" | "defined"
+      status: "defining",
       createdAt: "Today",
       owner: "Bobby",
       siteId: "site-001",
       roomId: "room-001",
+
+      // Slice 2:
+      evidenceRunId: "run-001",
+
+      // Slice 3:
+      baselineRunId: "run-001", // case “claims” the baseline run
+      triggerBinding: {
+        // binds case’s τ/W to the baseline run timeline
+        tau: "Door cycle",
+        windowMin: 15,
+        anchorPolicy: "event-linked", // for later: event-linked vs wall-clock
+      },
+
       definition: {
-        // Freeze the slice into a contract object (Z, τ, W, S)
-        Z: "NW · A1",          // zone (string for POC)
-        tau: "Door cycle",     // trigger/event anchor
-        W: "15m",              // window (duration)
-        S: "Mid-cycle",        // stage
-        sliceSentence: "We are talking about zone NW · A1 in window 15m after trigger Door cycle at stage Mid-cycle.",
+        Z: "NW · A1",
+        tau: "Door cycle",
+        W: "15m",
+        S: "Mid-cycle",
+        sliceSentence:
+          "We are talking about zone NW · A1 in window 15m after trigger Door cycle at stage Mid-cycle.",
       },
     },
   ];
 
-  return { sites, users, roles, cases };
+  const runs = [
+    {
+      id: "run-001",
+      label: "Baseline run (demo)",
+      createdAt: "Today",
+      owner: "Bobby",
+      siteId: "site-001",
+      roomId: "room-001",
+      caseId: "case-001",
+      inputs: {
+        filesAttached: true,
+        source: "Upload",
+        sensorSet: "Rig A",
+        firmware: "fw v1.0.0",
+        timeRange: "Last 24h",
+        hash: "sha256: 9c4a…d2f1",
+      },
+      gates: {
+        sensorTrust: "unknown",
+        coverage: "pass",
+        timeAlignment: "pass",
+        calibration: "pass",
+        placementSanity: "pass",
+        driftFlag: "pass",
+      },
+      notes: "",
+
+      // Slice 3: timeline (simple event stream)
+      timeline: buildDemoTimeline(),
+    },
+  ];
+
+  const receipts = [
+    {
+      id: "rcpt-001",
+      runId: "run-001",
+      caseId: "case-001",
+      title: "Receipt bundle · Provenance + Validity",
+      when: "Today",
+      frozen: true,
+      bullets: [
+        "Inputs attached and hashed",
+        "Provenance recorded (sensor set, firmware, time range)",
+        "Validity gates evaluated",
+        "ABSTAIN asserted because Sensor trust is UNKNOWN",
+      ],
+    },
+  ];
+
+  return { sites, users, roles, cases, runs, receipts };
 }
+
+function buildDemoTimeline() {
+  // 24h-ish, coarse, enough to demo event-linked windows
+  // types: "door" | "hvac" | "note" | "intervention"
+  return [
+    { id: "ev-001", t: "06:10", type: "door", label: "Door cycle", severity: 0.55 },
+    { id: "ev-002", t: "06:40", type: "hvac", label: "HVAC cycle", severity: 0.35 },
+    { id: "ev-003", t: "07:20", type: "door", label: "Door cycle", severity: 0.78 },
+    { id: "ev-004", t: "08:05", type: "note", label: "Stocking activity", severity: 0.20 },
+    { id: "ev-005", t: "09:10", type: "door", label: "Door cycle", severity: 0.62 },
+    { id: "ev-006", t: "10:15", type: "hvac", label: "HVAC cycle", severity: 0.30 },
+    { id: "ev-007", t: "12:20", type: "door", label: "Door cycle", severity: 0.70 },
+    { id: "ev-008", t: "15:05", type: "intervention", label: "Fan moved (log)", severity: 0.45 },
+    { id: "ev-009", t: "16:10", type: "door", label: "Door cycle", severity: 0.66 },
+    { id: "ev-010", t: "18:30", type: "door", label: "Door cycle", severity: 0.52 },
+  ];
+}
+
 
 function makeId(prefix = "case") {
   return `${prefix}-${Math.floor(100 + Math.random() * 900)}`;
@@ -167,6 +282,58 @@ function caseStatusTone(s) {
 function caseStatusLabel(s) {
   if (s === "defined") return "Defined";
   return "Defining";
+}
+
+function gateLabel(v) {
+  if (v === "pass") return "Pass";
+  if (v === "fail") return "Fail";
+  return "Unknown";
+}
+function gateTone(v) {
+  if (v === "pass") return "ok";
+  if (v === "fail") return "bad";
+  return "warn";
+}
+function gateIcon(v) {
+  if (v === "pass") return CheckCircle2;
+  if (v === "fail") return ShieldX;
+  return HelpCircle;
+}
+
+const CRITICAL_GATES = ["sensorTrust", "coverage", "timeAlignment"];
+
+function computeAbstain(run) {
+  const gates = run?.gates || {};
+  const reasons = [];
+
+  for (const k of CRITICAL_GATES) {
+    const v = gates[k] || "unknown";
+    if (v !== "pass") {
+      reasons.push(`${prettyGateName(k)} is ${gateLabel(v).toUpperCase()}`);
+    }
+  }
+
+  // Also abstain on any explicit FAIL anywhere
+  for (const [k, v] of Object.entries(gates)) {
+    if (v === "fail" && !reasons.includes(`${prettyGateName(k)} is FAIL`)) {
+      reasons.push(`${prettyGateName(k)} is FAIL`);
+    }
+  }
+
+  const abstain = reasons.length > 0;
+  return { abstain, reasons };
+}
+
+function prettyGateName(k) {
+  const map = {
+    sensorTrust: "Sensor trust",
+    coverage: "Coverage / density",
+    timeAlignment: "Time alignment",
+    calibration: "Calibration state",
+    placementSanity: "Placement sanity",
+    driftFlag: "Drift flags",
+  };
+  return map[k] || k;
 }
 
 function getSiteRoomLabel(data, siteId, roomId) {
@@ -221,8 +388,34 @@ function parseRoute(route) {
     const caseId = parts[1];
     if (parts.length === 2) return { page: "case", params: { caseId } };
     if (parts[2] === "define") return { page: "caseDefine", params: { caseId } };
+    if (parts[2] === "evidence") return { page: "caseEvidence", params: { caseId } };
+
+    // SLICE 3:
+    if (parts[2] === "baseline") return { page: "caseBaseline", params: { caseId } };
+    if (parts[2] === "triggers") return { page: "caseTriggers", params: { caseId } };
+
     return { page: "case", params: { caseId } };
   }
+
+  // SLICE 2: receipts
+  if (parts[0] === "receipts") {
+    if (parts.length === 1) return { page: "receipts", params: {} };
+    return { page: "receipt", params: { receiptId: parts[1] } };
+  }
+
+  if (parts[0] === "runs") {
+    if (parts[1] === "new") return { page: "runNew", params: {} };
+    const runId = parts[1];
+    if (parts[2] === "provenance") return { page: "runProvenance", params: { runId } };
+    if (parts[2] === "validity") return { page: "runValidity", params: { runId } };
+    if (parts[2] === "receipts") return { page: "runReceipts", params: { runId } };
+
+    // SLICE 3:
+    if (parts[2] === "timeline") return { page: "runTimeline", params: { runId } };
+
+    return { page: "runProvenance", params: { runId } };
+  }
+
 
   return { page: "overview", params: {} };
 }
@@ -390,6 +583,7 @@ const NAV = [
   { key: "/overview", label: "Overview", icon: Home },
   { key: "/sites", label: "Sites", icon: Building2 },
   { key: "/cases", label: "Cases", icon: ClipboardList },
+  { key: "/receipts", label: "Receipts", icon: FileText },
   { key: "/settings/users", label: "Users", icon: Users },
   { key: "/settings/roles", label: "Roles", icon: Wrench },
 ];
@@ -415,6 +609,16 @@ export default function Slice0SkeletonPOC() {
   const currentCase = useMemo(
     () => data.cases.find((c) => c.id === r.params.caseId),
     [data.cases, r.params.caseId]
+  );
+
+  const currentRun = useMemo(
+    () => data.runs.find((x) => x.id === r.params.runId),
+    [data.runs, r.params.runId]
+  );
+
+  const currentReceipt = useMemo(
+    () => data.receipts.find((x) => x.id === r.params.receiptId),
+    [data.receipts, r.params.receiptId]
   );
 
   function go(to) {
@@ -549,7 +753,22 @@ export default function Slice0SkeletonPOC() {
             {r.page === "settingsUsers" && (
               <SettingsUsersPage data={data} setData={setData} onGo={go} />
             )}
+
+            {r.page === "caseEvidence" && (
+              <CaseEvidencePage data={data} setData={setData} onGo={go} theCase={currentCase} />
+            )}
+            {r.page === "runNew" && <RunNewPage data={data} setData={setData} onGo={go} />}
+            {r.page === "runProvenance" && <RunProvenancePage data={data} setData={setData} onGo={go} run={currentRun} />}
+            {r.page === "runValidity" && <RunValidityPage data={data} setData={setData} onGo={go} run={currentRun} />}
+            {r.page === "runReceipts" && <RunReceiptsPage data={data} setData={setData} onGo={go} run={currentRun} />}
+            {r.page === "receipts" && <ReceiptsIndexPage data={data} onGo={go} />}
+            {r.page === "receipt" && <ReceiptDetailPage data={data} onGo={go} receipt={currentReceipt} />}
             {r.page === "settingsRoles" && <SettingsRolesPage roles={data.roles} />}
+
+            {r.page === "runTimeline" && <RunTimelinePage data={data} setData={setData} onGo={go} run={currentRun} />}
+            {r.page === "caseBaseline" && <CaseBaselinePage data={data} setData={setData} onGo={go} theCase={currentCase} />}
+            {r.page === "caseTriggers" && <CaseTriggersPage data={data} setData={setData} onGo={go} theCase={currentCase} />}
+
             {/* fallback */}
             {[
               "overview",
@@ -562,8 +781,20 @@ export default function Slice0SkeletonPOC() {
               "caseNew",
               "case",
               "caseDefine",
+              "caseEvidence",     // NEW
+              "runNew",           // NEW
+              "runProvenance",    // NEW
+              "runValidity",      // NEW
+              "runReceipts",      // NEW
+              "receipts",         // NEW
+              "receipt",          // NEW
               "settingsUsers",
               "settingsRoles",
+              "acceptInvite",
+
+              "runTimeline",
+              "caseBaseline",
+              "caseTriggers",
             ].includes(r.page) ? null : (
               <OverviewPage onGo={go} sites={data.sites} />
             )}
@@ -1308,13 +1539,29 @@ function CaseDetailPage({ data, setData, onGo, theCase }) {
             <Stat label="Room" value={roomName} />
             <Stat label="Owner" value={theCase.owner} />
           </div>
+
           <div className="hr" />
+
+          {/* ✅ BUTTON ROW — add Baseline + Triggers here */}
           <div className="row" style={{ flexWrap: "wrap" }}>
             <button className="btn btn--primary" onClick={() => onGo(`/cases/${theCase.id}/define`)}>
               <span className="row" style={{ gap: 8 }}>
                 <Tag size={14} /> Define slice
               </span>
             </button>
+
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/baseline`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ListChecks size={14} /> Baseline
+              </span>
+            </button>
+
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/triggers`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <Waves size={14} /> Triggers
+              </span>
+            </button>
+
             <button className="btn" onClick={() => onGo("/cases")}>
               Back
             </button>
@@ -1346,6 +1593,7 @@ function CaseDetailPage({ data, setData, onGo, theCase }) {
     </div>
   );
 }
+
 
 function CaseDefinePage({ data, setData, onGo, theCase }) {
   if (!theCase) {
@@ -1494,6 +1742,1346 @@ function MiniKV({ icon: Icon, k, v }) {
             <div style={{ fontWeight: 700, marginTop: 6 }}>{v}</div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   H) SLICE 2 PAGES — paste these below your existing pages
+   ========================================================= */
+
+function CaseEvidencePage({ data, setData, onGo, theCase }) {
+  if (!theCase) {
+    return (
+      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">No case object to attach evidence to.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const { siteName, roomName } = getSiteRoomLabel(data, theCase.siteId, theCase.roomId);
+  const run = data.runs.find((r) => r.id === theCase.evidenceRunId);
+  const abst = run ? computeAbstain(run) : { abstain: true, reasons: ["No run attached yet"] };
+
+  function createRunForCase() {
+    const id = makeId("run");
+    const newRun = {
+      id,
+      label: `Run for ${theCase.id}`,
+      createdAt: "Now",
+      owner: theCase.owner || "Operator",
+      siteId: theCase.siteId,
+      roomId: theCase.roomId,
+      caseId: theCase.id,
+      inputs: {
+        filesAttached: false,
+        source: "Upload",
+        sensorSet: "Rig A",
+        firmware: "fw v1.0.0",
+        timeRange: "—",
+        hash: "—",
+      },
+      gates: {
+        sensorTrust: "unknown",
+        coverage: "unknown",
+        timeAlignment: "unknown",
+        calibration: "unknown",
+        placementSanity: "unknown",
+        driftFlag: "unknown",
+      },
+      notes: "",
+    };
+
+    setData((d) => ({
+      ...d,
+      runs: [newRun, ...d.runs],
+      cases: d.cases.map((c) => (c.id === theCase.id ? { ...c, evidenceRunId: id } : c)),
+    }));
+
+    onGo(`/runs/${id}/provenance`);
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/cases/${theCase.id}/evidence`}
+        title="Evidence gates (ABSTAIN is binding)"
+        subtitle="Not a warning. A hard stop the operator can defend. Unknown means: you may not interpret."
+        right={
+          <Chip tone={abst.abstain ? "bad" : "ok"}>
+            {abst.abstain ? <Ban size={14} /> : <CheckCircle2 size={14} />}{" "}
+            {abst.abstain ? "ABSTAIN" : "INTERPRET OK"}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Case" title={theCase.title} right={<Chip>{siteName}</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Where</div>
+            <div style={{ fontWeight: 700, marginTop: 8 }}>{roomName}</div>
+            <div className="text" style={{ marginTop: 10 }}>
+              {theCase.definition?.sliceSentence || "Case not defined yet."}
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back to case
+              </span>
+            </button>
+            {!run ? (
+              <button className="btn btn--primary" onClick={createRunForCase}>
+                <span className="row" style={{ gap: 8 }}>
+                  <FilePlus2 size={14} /> Create run
+                </span>
+              </button>
+            ) : (
+              <button className="btn btn--primary" onClick={() => onGo(`/runs/${run.id}/provenance`)}>
+                <span className="row" style={{ gap: 8 }}>
+                  <UploadCloud size={14} /> Open run
+                </span>
+              </button>
+            )}
+          </div>
+        </Panel>
+
+        <Panel meta="State" title="Operational posture" right={<Chip tone="accent">Slice 2</Chip>}>
+          {abst.abstain ? (
+            <AbstainBanner
+              reasons={abst.reasons}
+              body={
+                <>
+                  <div className="text" style={{ marginTop: 8 }}>
+                    This is the moment the product carries the social weight:
+                    not “⚠️ warning”, but “🚫 you may not interpret this.”
+                  </div>
+                  <div className="text" style={{ marginTop: 10 }}>
+                    ABSTAIN isn’t cautious. It’s clean.
+                  </div>
+                </>
+              }
+            />
+          ) : (
+            <div className="box" style={{ padding: 14, border: "1px solid rgba(34,197,94,0.20)" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="kicker">Interpretation earned</div>
+                <Chip tone="ok">
+                  <CheckCircle2 size={14} /> allowed
+                </Chip>
+              </div>
+              <div className="text" style={{ marginTop: 10 }}>
+                Critical evidence gates are PASS. Downstream routes may interpret, compare, and verdict in later slices.
+              </div>
+            </div>
+          )}
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Pass if… (emotionally)</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              Unknown trust implies ABSTAIN downstream (not warning-only). Don’t make the human be the conscience.
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      {run && (
+        <div className="grid-2">
+          <Panel meta="Run" title="Evidence object" right={<Chip>{run.id}</Chip>}>
+            <div style={{ display: "grid", gap: 10 }}>
+              <div className="box" style={{ padding: 14 }}>
+                <div className="kicker">Input status</div>
+                <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
+                  <div className="text">
+                    files attached: <b>{run.inputs.filesAttached ? "yes" : "no"}</b>
+                  </div>
+                  <Chip tone={run.inputs.filesAttached ? "ok" : "warn"}>
+                    <UploadCloud size={14} /> {run.inputs.filesAttached ? "ready" : "missing"}
+                  </Chip>
+                </div>
+                <div className="text" style={{ marginTop: 10 }}>
+                  source: <b>{run.inputs.source}</b> · sensor set: <b>{run.inputs.sensorSet}</b>
+                </div>
+              </div>
+
+              <div className="row" style={{ flexWrap: "wrap" }}>
+                <button className="btn" onClick={() => onGo(`/runs/${run.id}/provenance`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <Fingerprint size={14} /> Provenance
+                  </span>
+                </button>
+                <button className="btn" onClick={() => onGo(`/runs/${run.id}/validity`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <ShieldAlert size={14} /> Validity gates
+                  </span>
+                </button>
+                <button className="btn" onClick={() => onGo(`/runs/${run.id}/receipts`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <FileText size={14} /> Receipts
+                  </span>
+                </button>
+
+                <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/evidence`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <ShieldAlert size={14} /> Evidence gates
+                  </span>
+                </button>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel meta="Gates" title="Critical gates (drive ABSTAIN)" right={<Chip tone="accent">hard stop</Chip>}>
+            <div style={{ display: "grid", gap: 10 }}>
+              {CRITICAL_GATES.map((k) => (
+                <GateRow key={k} name={prettyGateName(k)} value={run.gates[k]} />
+              ))}
+            </div>
+            <div className="hr" />
+            <div className="text">
+              “Assume everything else is fine. Now tell me what this single uncertainty does.”
+              If Sensor trust is UNKNOWN, downstream must ABSTAIN.
+            </div>
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunNewPage({ data, setData, onGo }) {
+  const [label, setLabel] = useState("New run");
+  const [siteId, setSiteId] = useState(data.sites[0]?.id || "");
+  const site = data.sites.find((s) => s.id === siteId);
+  const [roomId, setRoomId] = useState(site?.rooms?.[0]?.id || "");
+  const [caseId, setCaseId] = useState(data.cases[0]?.id || "");
+  const [owner, setOwner] = useState("Bobby");
+
+  React.useEffect(() => {
+    const nextSite = data.sites.find((s) => s.id === siteId);
+    setRoomId(nextSite?.rooms?.[0]?.id || "");
+  }, [siteId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function createRun() {
+    const id = makeId("run");
+    const run = {
+      id,
+      label: label.trim() || "Run",
+      createdAt: "Now",
+      owner,
+      siteId,
+      roomId,
+      caseId: caseId || null,
+      inputs: {
+        filesAttached: false,
+        source: "Upload",
+        sensorSet: "Rig A",
+        firmware: "fw v1.0.0",
+        timeRange: "—",
+        hash: "—",
+      },
+      gates: {
+        sensorTrust: "unknown",
+        coverage: "unknown",
+        timeAlignment: "unknown",
+        calibration: "unknown",
+        placementSanity: "unknown",
+        driftFlag: "unknown",
+      },
+      notes: "",
+    };
+
+    setData((d) => ({
+      ...d,
+      runs: [run, ...d.runs],
+      cases: caseId
+        ? d.cases.map((c) => (c.id === caseId ? { ...c, evidenceRunId: id } : c))
+        : d.cases,
+    }));
+
+    onGo(`/runs/${id}/provenance`);
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker="/runs/new"
+        title="Create run (evidence object)"
+        subtitle="Slice 2: a Run is where provenance + validity + receipts live. Without a Run, gates are theater."
+        right={<Chip tone="accent"><Database size={14}/> Slice 2</Chip>}
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.1fr 0.9fr" }}>
+        <Panel meta="Inputs" title="Run metadata" right={<Chip>POC</Chip>}>
+          <div style={{ display: "grid", gap: 12 }}>
+            <label className="label" style={{ marginTop: 0 }}>
+              <div className="stat-label">Label</div>
+              <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} />
+            </label>
+
+            <label className="label" style={{ marginTop: 0 }}>
+              <div className="stat-label">Site</div>
+              <select className="input" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+                {data.sites.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="label" style={{ marginTop: 0 }}>
+              <div className="stat-label">Room</div>
+              <select className="input" value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+                {(data.sites.find((s) => s.id === siteId)?.rooms || []).map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="label" style={{ marginTop: 0 }}>
+              <div className="stat-label">Attach to Case (optional)</div>
+              <select className="input" value={caseId} onChange={(e) => setCaseId(e.target.value)}>
+                {data.cases.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="label" style={{ marginTop: 0 }}>
+              <div className="stat-label">Owner</div>
+              <input className="input" value={owner} onChange={(e) => setOwner(e.target.value)} />
+            </label>
+
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+              <button className="btn btn--primary" onClick={createRun}>
+                <span className="row" style={{ gap: 8 }}>
+                  <FilePlus2 size={14} /> Create run
+                </span>
+              </button>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel meta="Why" title="Why runs exist" right={<Chip tone="warn">anti-theater</Chip>}>
+          <div className="text">
+            Operators have been burned by “green dashboards” running on borrowed confidence.
+            A Run makes uncertainty operationally binding:
+            <ul className="ul">
+              <li>unknown evidence blocks claims</li>
+              <li>ABSTAIN is a real output</li>
+              <li>receipts are timestamped and defensible</li>
+            </ul>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function RunProvenancePage({ data, setData, onGo, run }) {
+  if (!run) {
+    return (
+      <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Route exists; object missing.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/runs/new")}>Create run</button>
+      </Panel>
+    );
+  }
+
+  const { siteName, roomName } = getSiteRoomLabel(data, run.siteId, run.roomId);
+  const abst = computeAbstain(run);
+
+  function attachDemoFiles() {
+    setData((d) => ({
+      ...d,
+      runs: d.runs.map((x) =>
+        x.id === run.id
+          ? {
+              ...x,
+              inputs: {
+                ...x.inputs,
+                filesAttached: true,
+                timeRange: "Last 24h",
+                hash: `sha256: ${Math.random().toString(16).slice(2, 6)}…${Math.random().toString(16).slice(2, 6)}`,
+              },
+            }
+          : x
+      ),
+    }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/runs/${run.id}/provenance`}
+        title="Provenance"
+        subtitle="If the system is going to lie, it should lie in your face while you're watching. Provenance makes that hard."
+        right={
+          <Chip tone={abst.abstain ? "bad" : "ok"}>
+            {abst.abstain ? <Ban size={14} /> : <CheckCircle2 size={14} />}{" "}
+            {abst.abstain ? "ABSTAIN" : "OK"}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.1fr 0.9fr" }}>
+        <Panel meta="Run" title={run.label} right={<Chip>{run.id}</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Context</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              site: <b>{siteName}</b> · room: <b>{roomName}</b> · owner: <b>{run.owner}</b>
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <div>
+                <div className="kicker">Inputs</div>
+                <div style={{ fontWeight: 750, marginTop: 6 }}>
+                  {run.inputs.filesAttached ? "Files attached" : "No files attached yet"}
+                </div>
+              </div>
+              <Chip tone={run.inputs.filesAttached ? "ok" : "warn"}>
+                <UploadCloud size={14} /> {run.inputs.filesAttached ? "hashed" : "missing"}
+              </Chip>
+            </div>
+
+            <div className="text" style={{ marginTop: 10 }}>
+              source: <b>{run.inputs.source}</b> · sensor set: <b>{run.inputs.sensorSet}</b> · firmware:{" "}
+              <b>{run.inputs.firmware}</b>
+            </div>
+            <div className="text" style={{ marginTop: 10 }}>
+              time range: <b>{run.inputs.timeRange}</b>
+            </div>
+            <div className="text" style={{ marginTop: 10 }}>
+              hash: <b>{run.inputs.hash}</b>
+            </div>
+
+            <div className="row" style={{ flexWrap: "wrap", marginTop: 12 }}>
+              <button className="btn btn--primary" onClick={attachDemoFiles}>
+                <span className="row" style={{ gap: 8 }}>
+                  <UploadCloud size={14} /> Attach demo files
+                </span>
+              </button>
+              <button className="btn" onClick={() => onGo(`/runs/${run.id}/validity`)}>
+                <span className="row" style={{ gap: 8 }}>
+                  <ShieldAlert size={14} /> Continue to gates
+                </span>
+              </button>
+  <button className="btn" onClick={() => onGo(`/runs/${run.id}/timeline`)}>
+    <span className="row" style={{ gap: 8 }}>
+      <CalendarClock size={14} /> Timeline
+    </span>
+  </button>
+              {run.caseId && (
+                <button className="btn" onClick={() => onGo(`/cases/${run.caseId}/evidence`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <ArrowLeft size={14} /> Back to case evidence
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        </Panel>
+
+        <Panel meta="Why" title="Institutional backbone" right={<Chip tone="accent"><Fingerprint size={14}/> receipts</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">What this prevents</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              Retroactive blame games. If outcomes go bad, you can point to a locked truth:
+              “We weren’t allowed to claim it was fixed. We logged an abstain.”
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Operator feeling</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              The relief of not being tricked into confidence. The system takes the social hit of saying “no.”
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function RunValidityPage({ data, setData, onGo, run }) {
+  if (!run) {
+    return (
+      <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">No run object to gate.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/runs/new")}>Create run</button>
+      </Panel>
+    );
+  }
+
+  const abst = computeAbstain(run);
+
+  function setGate(key, value) {
+    setData((d) => ({
+      ...d,
+      runs: d.runs.map((x) => (x.id === run.id ? { ...x, gates: { ...x.gates, [key]: value } } : x)),
+    }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/runs/${run.id}/validity`}
+        title="Validity gates (ABSTAIN is binding)"
+        subtitle="Warning-only systems shrug. This system forbids interpretation when evidence is incomplete."
+        right={
+          <Chip tone={abst.abstain ? "bad" : "ok"}>
+            {abst.abstain ? <Ban size={14} /> : <CheckCircle2 size={14} />}{" "}
+            {abst.abstain ? "ABSTAIN" : "INTERPRET OK"}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Gates" title="Set gate states (stress-test honesty)" right={<Chip tone="accent">tri-state</Chip>}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {Object.keys(run.gates).map((k) => (
+              <GateEditorRow key={k} k={k} v={run.gates[k]} onChange={(v) => setGate(k, v)} />
+            ))}
+          </div>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/runs/${run.id}/provenance`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <Fingerprint size={14} /> Back to provenance
+              </span>
+            </button>
+            <button className="btn btn--primary" onClick={() => onGo(`/runs/${run.id}/receipts`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <FileText size={14} /> Continue to receipts
+              </span>
+            </button>
+          </div>
+        </Panel>
+
+        <Panel meta="Result" title="Downstream posture" right={<Chip tone={abst.abstain ? "bad" : "ok"}>{abst.abstain ? "ABSTAIN" : "OK"}</Chip>}>
+          {abst.abstain ? (
+            <AbstainBanner
+              reasons={abst.reasons}
+              body={
+                <>
+                  <div className="text" style={{ marginTop: 8 }}>
+                    This is operationally binding. Not “be careful.” Not “maybe.” A hard stop.
+                  </div>
+                  <div className="text" style={{ marginTop: 10 }}>
+                    The UI carries the weight: “🚫 you may not interpret this.”
+                  </div>
+                </>
+              }
+            />
+          ) : (
+            <div className="box" style={{ padding: 14, border: "1px solid rgba(34,197,94,0.20)" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="kicker">Interpretation allowed</div>
+                <Chip tone="ok">
+                  <CheckCircle2 size={14} /> earned
+                </Chip>
+              </div>
+              <div className="text" style={{ marginTop: 10 }}>
+                Critical gates are PASS. This run can support downstream compare/verdict in later slices.
+              </div>
+            </div>
+          )}
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Pass if…</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              Setting Sensor trust = UNKNOWN must flip the system into ABSTAIN downstream (not warning-only).
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function RunReceiptsPage({ data, setData, onGo, run }) {
+  if (!run) {
+    return (
+      <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">No run object to receipt.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/runs/new")}>Create run</button>
+      </Panel>
+    );
+  }
+
+  const abst = computeAbstain(run);
+  const runReceipts = data.receipts.filter((r) => r.runId === run.id);
+
+  function generateReceiptBundle() {
+    const id = makeId("rcpt");
+    const bullets = [
+      run.inputs.filesAttached ? "Inputs attached and hashed" : "Inputs missing (still recorded)",
+      `Provenance recorded: sensor set=${run.inputs.sensorSet}, firmware=${run.inputs.firmware}`,
+      `Validity gates evaluated`,
+      ...(abst.abstain
+        ? [`ABSTAIN asserted: ${abst.reasons.join(" · ")}`]
+        : ["Interpretation allowed: critical gates PASS"]),
+    ];
+
+    const receipt = {
+      id,
+      runId: run.id,
+      caseId: run.caseId || null,
+      title: `Receipt bundle · ${abst.abstain ? "ABSTAIN" : "OK to interpret"}`,
+      when: "Now",
+      frozen: true,
+      bullets,
+    };
+
+    setData((d) => ({ ...d, receipts: [receipt, ...d.receipts] }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/runs/${run.id}/receipts`}
+        title="Receipts (frozen, defensible)"
+        subtitle="Receipts aren’t paperwork. They’re survival: a time-stamped truth you can point to later."
+        right={
+          <Chip tone={abst.abstain ? "bad" : "ok"}>
+            {abst.abstain ? <Ban size={14} /> : <CheckCircle2 size={14} />}{" "}
+            {abst.abstain ? "ABSTAIN" : "OK"}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.1fr 0.9fr" }}>
+        <Panel meta="Generate" title="Receipt bundle" right={<Chip tone="accent"><ClipboardCheck size={14}/> frozen</Chip>}>
+          {abst.abstain ? (
+            <AbstainBanner
+              reasons={abst.reasons}
+              body={
+                <div className="text" style={{ marginTop: 8 }}>
+                  You can still generate a receipt — it just freezes the ABSTAIN and its reasons.
+                </div>
+              }
+            />
+          ) : (
+            <div className="box" style={{ padding: 14, border: "1px solid rgba(34,197,94,0.20)" }}>
+              <div className="kicker">Green means earned</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                Receipt will lock provenance + gate state at generation time.
+              </div>
+            </div>
+          )}
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/runs/${run.id}/validity`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ShieldAlert size={14} /> Back to gates
+              </span>
+            </button>
+            <button className="btn btn--primary" onClick={generateReceiptBundle}>
+              <span className="row" style={{ gap: 8 }}>
+                <FileText size={14} /> Generate receipt
+              </span>
+            </button>
+            <button className="btn" onClick={() => onGo("/receipts")}>
+              <span className="row" style={{ gap: 8 }}>
+                <FileText size={14} /> View all receipts
+              </span>
+            </button>
+          </div>
+        </Panel>
+
+        <Panel meta="Receipts" title="Existing receipts" right={<Chip>{runReceipts.length}</Chip>}>
+          {runReceipts.length === 0 ? (
+            <div className="text">No receipts yet. Generate one to freeze the truth state.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {runReceipts.map((rcpt) => (
+                <button key={rcpt.id} className="taskRow" onClick={() => onGo(`/receipts/${rcpt.id}`)}>
+                  <div className="row" style={{ gap: 10 }}>
+                    <div className="taskIcon"><FileText size={16} /></div>
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ fontWeight: 650 }}>{rcpt.title}</div>
+                      <div className="kicker" style={{ marginTop: 4 }}>
+                        {rcpt.when} · {rcpt.frozen ? "frozen" : "draft"}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="taskHint">
+                    Open <ArrowRight size={14} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function ReceiptsIndexPage({ data, onGo }) {
+  const ordered = [...data.receipts];
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker="/receipts"
+        title="Receipts"
+        subtitle="Frozen bundles the operator can hand off. No vibes. Just time-stamped claims (or abstains)."
+        right={<Chip tone="accent"><FileText size={14}/> {ordered.length}</Chip>}
+      />
+
+      <Panel meta="Index" title="All receipts" right={<Chip>frozen</Chip>}>
+        {ordered.length === 0 ? (
+          <div className="text">No receipts yet.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {ordered.map((rcpt) => (
+              <button key={rcpt.id} className="taskRow" onClick={() => onGo(`/receipts/${rcpt.id}`)}>
+                <div className="row" style={{ gap: 10 }}>
+                  <div className="taskIcon"><FileText size={16} /></div>
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontWeight: 650 }}>{rcpt.title}</div>
+                    <div className="kicker" style={{ marginTop: 4 }}>
+                      {rcpt.when} · run {rcpt.runId}
+                    </div>
+                  </div>
+                </div>
+                <span className="taskHint">
+                  Open <ArrowRight size={14} />
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function ReceiptDetailPage({ data, onGo, receipt }) {
+  if (!receipt) {
+    return (
+      <Panel meta="Error" title="Receipt not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Receipt object missing.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/receipts")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const run = data.runs.find((r) => r.id === receipt.runId);
+  const abst = run ? computeAbstain(run) : { abstain: true, reasons: ["Run missing"] };
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/receipts/${receipt.id}`}
+        title={receipt.title}
+        subtitle="This is the artifact you point to later. Frozen truth, not meeting vibes."
+        right={
+          <Chip tone={abst.abstain ? "bad" : "ok"}>
+            {abst.abstain ? <Ban size={14} /> : <CheckCircle2 size={14} />}{" "}
+            {abst.abstain ? "ABSTAIN" : "OK"}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Receipt" title={receipt.id} right={<Chip>{receipt.when}</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Bullets</div>
+            <ul className="ul" style={{ marginTop: 10 }}>
+              {receipt.bullets.map((b, i) => <li key={i}>{b}</li>)}
+            </ul>
+          </div>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo("/receipts")}>
+              Back to Receipts
+            </button>
+            {run && (
+              <button className="btn btn--primary" onClick={() => onGo(`/runs/${run.id}/provenance`)}>
+                <span className="row" style={{ gap: 8 }}>
+                  <Fingerprint size={14} /> Open run
+                </span>
+              </button>
+            )}
+          </div>
+        </Panel>
+
+        <Panel meta="State" title="What this receipt means" right={<Chip tone="accent">binding</Chip>}>
+          {abst.abstain ? (
+            <AbstainBanner
+              reasons={abst.reasons}
+              body={
+                <div className="text" style={{ marginTop: 8 }}>
+                  ABSTAIN is not a failure. It’s disciplined output: evidence missing → claim forbidden.
+                </div>
+              }
+            />
+          ) : (
+            <div className="box" style={{ padding: 14, border: "1px solid rgba(34,197,94,0.20)" }}>
+              <div className="kicker">Interpretation was earned</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                Critical gates were PASS at receipt time. Claims built on this run are defensible.
+              </div>
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   I) UI WIDGETS — add these small components near your atoms
+   ========================================================= */
+
+function GateRow({ name, value }) {
+  const Icon = gateIcon(value);
+  return (
+    <div className="gateRow">
+      <div className="row" style={{ gap: 10 }}>
+        <div className="taskIcon" style={{ width: 34, height: 34 }}>
+          <Icon size={16} />
+        </div>
+        <div>
+          <div style={{ fontWeight: 700 }}>{name}</div>
+          <div className="kicker" style={{ marginTop: 4 }}>
+            {name.includes("Sensor") ? "If unknown → ABSTAIN downstream" : "Contributes to validity posture"}
+          </div>
+        </div>
+      </div>
+      <Chip tone={gateTone(value)}>{gateLabel(value)}</Chip>
+    </div>
+  );
+}
+
+function GateEditorRow({ k, v, onChange }) {
+  return (
+    <div className="gateRow">
+      <div>
+        <div style={{ fontWeight: 700 }}>{prettyGateName(k)}</div>
+        <div className="kicker" style={{ marginTop: 4 }}>
+          {CRITICAL_GATES.includes(k) ? "Critical (drives ABSTAIN)" : "Secondary (still matters)"}
+        </div>
+      </div>
+
+      <div className="row" style={{ gap: 10 }}>
+        <select className="gateSelect" value={v} onChange={(e) => onChange(e.target.value)}>
+          <option value="pass">Pass</option>
+          <option value="unknown">Unknown</option>
+          <option value="fail">Fail</option>
+        </select>
+        <Chip tone={gateTone(v)}>{gateLabel(v)}</Chip>
+      </div>
+    </div>
+  );
+}
+
+function AbstainBanner({ reasons, body }) {
+  return (
+    <div className="abstain">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <div>
+          <div className="kicker">Hard stop</div>
+          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6 }}>
+            🚫 ABSTAIN — you may not interpret this
+          </div>
+        </div>
+        <Chip tone="bad">
+          <Ban size={14} /> ABSTAIN
+        </Chip>
+      </div>
+
+      <div className="text" style={{ marginTop: 10 }}>
+        {body}
+      </div>
+
+      <div className="hr" />
+
+      <div className="kicker">Reasons</div>
+      <ul className="ul" style={{ marginTop: 10 }}>
+        {reasons.map((r, i) => (
+          <li key={i}>
+            <b>{r}</b>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hr" />
+
+      <button className="btn btn--blocked" disabled title="Interpretation is blocked by ABSTAIN">
+        <span className="row" style={{ gap: 8 }}>
+          <Ban size={14} /> Interpretation blocked
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function RunTimelinePage({ data, setData, onGo, run }) {
+  if (!run) {
+    return (
+      <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">No run object to show timeline for.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/runs/new")}>Create run</button>
+      </Panel>
+    );
+  }
+
+  const events = run.timeline || [];
+  const [filter, setFilter] = useState("all"); // all/door/hvac/note/intervention
+
+  const shown = events.filter((e) => (filter === "all" ? true : e.type === filter));
+
+  function addEvent(type) {
+    const id = makeId("ev");
+    const t = `${String(6 + Math.floor(Math.random() * 13)).padStart(2, "0")}:${String(
+      Math.floor(Math.random() * 6) * 10
+    ).padStart(2, "0")}`;
+    const label =
+      type === "door"
+        ? "Door cycle"
+        : type === "hvac"
+        ? "HVAC cycle"
+        : type === "intervention"
+        ? "Intervention log"
+        : "Operator note";
+
+    const ev = { id, t, type, label, severity: Math.round((0.2 + Math.random() * 0.7) * 100) / 100 };
+
+    setData((d) => ({
+      ...d,
+      runs: d.runs.map((x) => (x.id === run.id ? { ...x, timeline: [...(x.timeline || []), ev] } : x)),
+    }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/runs/${run.id}/timeline`}
+        title="Run timeline"
+        subtitle="Slice 3: the default ruler is event-linked windows, not wall-clock averages."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <CalendarClock size={14} /> events
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/runs/${run.id}/provenance`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Stream" title="Events" right={<Chip>{events.length}</Chip>}>
+          <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <button className={cx("btn", filter === "all" && "btn--primary")} onClick={() => setFilter("all")}>
+                All
+              </button>
+              <button className={cx("btn", filter === "door" && "btn--primary")} onClick={() => setFilter("door")}>
+                Door
+              </button>
+              <button className={cx("btn", filter === "hvac" && "btn--primary")} onClick={() => setFilter("hvac")}>
+                HVAC
+              </button>
+              <button
+                className={cx("btn", filter === "intervention" && "btn--primary")}
+                onClick={() => setFilter("intervention")}
+              >
+                Intervention
+              </button>
+              <button className={cx("btn", filter === "note" && "btn--primary")} onClick={() => setFilter("note")}>
+                Notes
+              </button>
+            </div>
+
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              <button className="btn" onClick={() => addEvent("door")}>+ Door</button>
+              <button className="btn" onClick={() => addEvent("hvac")}>+ HVAC</button>
+              <button className="btn" onClick={() => addEvent("intervention")}>+ Intervention</button>
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {shown.length === 0 ? (
+              <div className="text">No events in this filter.</div>
+            ) : (
+              shown
+                .slice()
+                .sort((a, b) => (a.t > b.t ? 1 : -1))
+                .map((e) => (
+                  <div key={e.id} className="eventRow">
+                    <div className="row" style={{ gap: 10 }}>
+                      <div className="taskIcon" style={{ width: 34, height: 34 }}>
+                        <CalendarClock size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 750 }}>{e.label}</div>
+                        <div className="kicker" style={{ marginTop: 4 }}>
+                          {e.t} · type: {e.type}
+                        </div>
+                      </div>
+                    </div>
+                    <Chip tone={e.severity > 0.66 ? "warn" : "neutral"}>{Math.round(e.severity * 100)}%</Chip>
+                  </div>
+                ))
+            )}
+          </div>
+        </Panel>
+
+        <Panel meta="Why" title="Event-linked windows" right={<Chip tone="accent"><Link2 size={14}/> ruler</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">The default ruler</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              If you measure “after the trigger” you can compare apples-to-apples.
+              If you measure wall-clock averages, you get storytime.
+            </div>
+          </div>
+          <div className="hr" />
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Slice 3 constraint</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              The Case must claim a baseline run, then bind to τ/W from the case definition.
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function CaseBaselinePage({ data, setData, onGo, theCase }) {
+  if (!theCase) {
+    return (
+      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">No case object to select baseline for.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const caseRuns = data.runs.filter((r) => r.siteId === theCase.siteId && r.roomId === theCase.roomId);
+  const selected = caseRuns.find((r) => r.id === theCase.baselineRunId) || null;
+
+  function setBaseline(runId) {
+    setData((d) => ({
+      ...d,
+      cases: d.cases.map((c) =>
+        c.id === theCase.id
+          ? {
+              ...c,
+              baselineRunId: runId,
+              // default binding from case definition if available
+              triggerBinding: c.triggerBinding || {
+                tau: c.definition?.tau || "Door cycle",
+                windowMin: parseWindowToMin(c.definition?.W) || 15,
+                anchorPolicy: "event-linked",
+              },
+            }
+          : c
+      ),
+    }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/cases/${theCase.id}/baseline`}
+        title="Select baseline run"
+        subtitle="Slice 3: the Case must “claim” a baseline run so τ/W become a comparable ruler."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <ListChecks size={14} /> baseline
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Runs" title="Choose baseline" right={<Chip>{caseRuns.length}</Chip>}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {caseRuns.length === 0 ? (
+              <div className="text">No runs for this room yet. Create a run first.</div>
+            ) : (
+              caseRuns.map((r) => {
+                const isOn = theCase.baselineRunId === r.id;
+                return (
+                  <button
+                    key={r.id}
+                    className={cx("taskRow", isOn && "taskRow--active")}
+                    onClick={() => setBaseline(r.id)}
+                  >
+                    <div className="row" style={{ gap: 10 }}>
+                      <div className="taskIcon">
+                        <Database size={16} />
+                      </div>
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ fontWeight: 750 }}>{r.label}</div>
+                        <div className="kicker" style={{ marginTop: 4 }}>
+                          {r.id} · {r.inputs?.timeRange || "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Chip tone={isOn ? "ok" : "neutral"}>{isOn ? "Selected" : "Select"}</Chip>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </Panel>
+
+        <Panel meta="Binding" title="Bind τ/W to baseline timeline" right={<Chip tone="accent"><Link2 size={14}/> ruler</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Case definition</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              τ: <b>{theCase.definition?.tau || "—"}</b> · W: <b>{theCase.definition?.W || "—"}</b>
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          {!selected ? (
+            <div className="text">Select a baseline run to continue.</div>
+          ) : (
+            <div className="box" style={{ padding: 14 }}>
+              <div className="kicker">Selected baseline</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                <b>{selected.label}</b>
+              </div>
+              <div className="row" style={{ flexWrap: "wrap", marginTop: 12 }}>
+                <button className="btn" onClick={() => onGo(`/runs/${selected.id}/timeline`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <CalendarClock size={14} /> View run timeline
+                  </span>
+                </button>
+                <button className="btn btn--primary" onClick={() => onGo(`/cases/${theCase.id}/triggers`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <ChevronRight size={14} /> Go to triggers
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="hr" />
+
+          <div className="text">
+            Why together: timeline alone is fine, but the Case must claim the baseline and bind it to τ/W or you get “choose-your-own ruler.”
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function CaseTriggersPage({ data, setData, onGo, theCase }) {
+  if (!theCase) {
+    return (
+      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">No case object to show triggers for.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const baseline = data.runs.find((r) => r.id === theCase.baselineRunId);
+  const binding = theCase.triggerBinding || {
+    tau: theCase.definition?.tau || "Door cycle",
+    windowMin: parseWindowToMin(theCase.definition?.W) || 15,
+    anchorPolicy: "event-linked",
+  };
+
+  function updateBinding(patch) {
+    setData((d) => ({
+      ...d,
+      cases: d.cases.map((c) =>
+        c.id === theCase.id ? { ...c, triggerBinding: { ...(c.triggerBinding || binding), ...patch } } : c
+      ),
+    }));
+  }
+
+  const events = baseline?.timeline || [];
+  const matched = events.filter((e) => e.label === binding.tau);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/cases/${theCase.id}/triggers`}
+        title="Triggers (event-anchored ruler)"
+        subtitle="Slice 3: the Case binds its τ/W to the baseline run timeline so comparisons are anchored to the same kind of moment."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <Waves size={14} /> event-linked
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Binding" title="Anchor settings" right={<Chip tone="accent">τ/W</Chip>}>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div className="box" style={{ padding: 14 }}>
+              <div className="kicker">Baseline run</div>
+              <div style={{ fontWeight: 750, marginTop: 8 }}>{baseline ? baseline.label : "— (none selected)"}</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                {baseline ? `run ${baseline.id}` : "Select a baseline run first."}
+              </div>
+              <div className="row" style={{ flexWrap: "wrap", marginTop: 12 }}>
+                <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/baseline`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <ListChecks size={14} /> Change baseline
+                  </span>
+                </button>
+                {baseline && (
+                  <button className="btn" onClick={() => onGo(`/runs/${baseline.id}/timeline`)}>
+                    <span className="row" style={{ gap: 8 }}>
+                      <CalendarClock size={14} /> View timeline
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <label className="label" style={{ marginTop: 0 }}>
+              <div className="stat-label">τ — Trigger name (must match timeline label)</div>
+              <input
+                className="input"
+                value={binding.tau}
+                onChange={(e) => updateBinding({ tau: e.target.value })}
+                placeholder='e.g., "Door cycle"'
+                disabled={!baseline}
+              />
+            </label>
+
+            <label className="label" style={{ marginTop: 0 }}>
+              <div className="stat-label">W — Window length (minutes)</div>
+              <input
+                className="input"
+                value={binding.windowMin}
+                onChange={(e) => updateBinding({ windowMin: clampInt(e.target.value, 1, 240) })}
+                disabled={!baseline}
+              />
+            </label>
+
+            <div className="box" style={{ padding: 14 }}>
+              <div className="kicker">Anchor policy</div>
+              <div className="row" style={{ justifyContent: "space-between", marginTop: 10 }}>
+                <Chip tone="accent">
+                  <Link2 size={14} /> event-linked
+                </Chip>
+                <Chip tone="neutral">wall-clock (deferred)</Chip>
+              </div>
+              <div className="text" style={{ marginTop: 10 }}>
+                We only ship event-linked in Slice 3. Wall-clock is how dashboards sneak “borrowed confidence” back in.
+              </div>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel meta="Preview" title="What this selects" right={<Chip>{matched.length}</Chip>}>
+          {!baseline ? (
+            <div className="text">No baseline selected. Choose one first.</div>
+          ) : (
+            <>
+              <div className="box" style={{ padding: 14 }}>
+                <div className="kicker">Slice sentence (ruler)</div>
+                <div className="text" style={{ marginTop: 8 }}>
+                  <b>
+                    Measure {binding.windowMin}m after each <span style={{ opacity: 0.9 }}>{binding.tau}</span> event.
+                  </b>
+                </div>
+              </div>
+
+              <div className="hr" />
+
+              <div className="box" style={{ padding: 14 }}>
+                <div className="kicker">Matched events in baseline</div>
+                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                  {matched.length === 0 ? (
+                    <div className="text">
+                      No matching events. (This is good demo friction: if τ doesn’t match the timeline, you can’t pretend it does.)
+                    </div>
+                  ) : (
+                    matched.slice(0, 6).map((e) => (
+                      <div key={e.id} className="eventRow">
+                        <div className="row" style={{ gap: 10 }}>
+                          <div className="taskIcon" style={{ width: 34, height: 34 }}>
+                            <Waves size={16} />
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 750 }}>{e.label}</div>
+                            <div className="kicker" style={{ marginTop: 4 }}>
+                              anchor @ {e.t} · window: +{binding.windowMin}m
+                            </div>
+                          </div>
+                        </div>
+                        <Chip tone={e.severity > 0.66 ? "warn" : "neutral"}>{Math.round(e.severity * 100)}%</Chip>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="hr" />
+
+              <div className="box" style={{ padding: 14 }}>
+                <div className="kicker">Why it matters</div>
+                <div className="text" style={{ marginTop: 8 }}>
+                  Meetings hate ambiguity. This makes ambiguity a state: if τ doesn’t exist, the ruler doesn’t exist.
+                  That’s how you avoid storytime.
+                </div>
+              </div>
+            </>
+          )}
+        </Panel>
       </div>
     </div>
   );
@@ -1706,6 +3294,50 @@ a{ color: inherit; }
 
 .ul{ margin: 10px 0 0; padding-left: 18px; color: var(--muted); }
 .ul li{ margin: 8px 0; }
+
+.gateRow{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(2,6,23,.25);
+}
+.gateSelect{
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(2,6,23,.35);
+  color: var(--text);
+  outline: none;
+  font-weight: 650;
+}
+.gateSelect:focus{ border-color: rgba(56,189,248,.35); box-shadow: 0 0 0 4px rgba(56,189,248,.08); }
+
+.abstain{
+  border-radius: 16px;
+  border: 1px solid rgba(248,113,113,0.30);
+  background: linear-gradient(180deg, rgba(248,113,113,0.08), rgba(2,6,23,0.25));
+  padding: 14px;
+}
+.btn--blocked{
+  width: 100%;
+  border-color: rgba(248,113,113,0.35);
+  background: rgba(248,113,113,0.12);
+}
+
+.eventRow{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(2,6,23,.25);
+}
 `}</style>
   );
 }
