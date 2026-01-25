@@ -53,6 +53,22 @@ import {
   Target,
 } from "lucide-react";
 
+import { 
+  GitCompare, 
+  Gavel, 
+  XCircle 
+} from "lucide-react";
+
+import { 
+  FileOutput, 
+  FolderArchive, 
+  FileSearch, 
+  FileDown, 
+  ClipboardSignature 
+} from "lucide-react";
+
+
+
 
 /**
  * Slice 0 — Skeleton (must ship together)
@@ -85,6 +101,101 @@ function clampInt(x, a, b) {
   const n = parseInt(x, 10);
   if (!Number.isFinite(n)) return a;
   return Math.max(a, Math.min(b, n));
+}
+
+function comparabilityChecklist(caseObj, baselineRun, verificationRun) {
+  // Simple, honest, POC rules. Later you’ll formalize.
+  const out = [
+    {
+      key: "sameRoom",
+      label: "Same room",
+      pass: baselineRun?.roomId && verificationRun?.roomId && baselineRun.roomId === verificationRun.roomId,
+      whyFail: "Runs are not for the same room.",
+    },
+    {
+      key: "sameSensorSet",
+      label: "Same sensor set",
+      pass:
+        baselineRun?.inputs?.sensorSet &&
+        verificationRun?.inputs?.sensorSet &&
+        baselineRun.inputs.sensorSet === verificationRun.inputs.sensorSet,
+      whyFail: "Sensor set differs (not comparable).",
+    },
+    {
+      key: "alignmentModeExists",
+      label: "Alignment mode exists (event-linked τ/W)",
+      pass: Boolean(caseObj?.triggerBinding?.tau && caseObj?.triggerBinding?.windowMin),
+      whyFail: "Case has no τ/W binding (no ruler).",
+    },
+    {
+      key: "baselineValid",
+      label: "Baseline validity not ABSTAIN",
+      pass: baselineRun ? !computeAbstain(baselineRun).abstain : false,
+      whyFail: "Baseline run is ABSTAIN (cannot be a baseline).",
+    },
+    {
+      key: "verificationValid",
+      label: "Verification validity not ABSTAIN",
+      pass: verificationRun ? !computeAbstain(verificationRun).abstain : false,
+      whyFail: "Verification run is ABSTAIN (cannot verify).",
+    },
+  ];
+
+  return out;
+}
+
+function compareSummary(data, baselineRun, verificationRun) {
+  // POC: use pockets as a stand-in for “field outcome”
+  // Metric: top pocket severity shift (baseline -> verification)
+  const baseP = (data.runPockets || []).filter((p) => p.runId === baselineRun?.id);
+  const verP = (data.runPockets || []).filter((p) => p.runId === verificationRun?.id);
+
+  const baseTop = baseP.slice().sort((a,b)=>scorePocket(b)-scorePocket(a))[0];
+  const verTop = verP.slice().sort((a,b)=>scorePocket(b)-scorePocket(a))[0];
+
+  const baseSev = baseTop?.severity ?? null;
+  const verSev = verTop?.severity ?? null;
+
+  const delta = baseSev != null && verSev != null ? verSev - baseSev : null;
+
+  return {
+    baseTop,
+    verTop,
+    baseSev,
+    verSev,
+    delta,
+  };
+}
+
+function verdictFrom(compareOk, summary) {
+  // POC rule:
+  // - if compareOk false → ABSTAIN
+  // - else if delta <= -0.10 (improved) OR verSev <= 0.6 → “Repeatable once (CONFIDENT)”
+  // - else ABSTAIN with reason
+  if (!compareOk) {
+    return { status: "ABSTAIN", label: "ABSTAIN", reasons: ["Comparability failed — cannot claim repeatability."] };
+  }
+
+  if (summary.verSev == null) {
+    return { status: "ABSTAIN", label: "ABSTAIN", reasons: ["No comparable pocket metric available."] };
+  }
+
+  const improved = summary.delta != null && summary.delta <= -0.1;
+  const acceptable = summary.verSev <= 0.6;
+
+  if (improved || acceptable) {
+    return {
+      status: "CONFIDENT",
+      label: "Repeatable once (CONFIDENT)",
+      reasons: ["Comparability passed and verification shows improvement on comparable ruler."],
+    };
+  }
+
+  return {
+    status: "ABSTAIN",
+    label: "ABSTAIN",
+    reasons: ["Comparability passed but verification did not show improvement strong enough to claim repeatability."],
+  };
 }
 
 function Chip({ tone = "neutral", children }) {
@@ -177,6 +288,33 @@ function makeSeedData() {
     { id: "r-view", name: "Viewer", desc: "Read-only access to rooms and reports." },
   ];
 
+  const reports = [
+    {
+      id: "rep-001",
+      caseId: "case-001",
+      title: "Pilot Readout — Top Findings",
+      createdAt: "Today",
+      owner: "Bobby",
+      status: "draft", // "draft" | "frozen"
+      // what this report claims (POC placeholders)
+      topFindings: [
+        "SE shelf pocket (P-01) repeats on comparable Door cycle windows.",
+        "Vent shadow zone appears after HVAC cycle; needs targeted verification.",
+      ],
+      keyResult: "P-01 repeats on comparable cycles (ABSTAIN until sensor trust PASS).",
+      nextSteps: [
+        "Run verification window after Door cycle with sensor trust PASS (or add temp sensor).",
+        "If comparability fails, keep ABSTAIN and log why (prevents storytime).",
+      ],
+      // frozen bundle pointers (built in /reports/:id/receipts)
+      frozenReceiptIds: ["rcpt-001"],
+      // link back to runs (optional; useful for export summary)
+      baselineRunId: "run-001",
+      verificationRunId: null,
+      verdictSnapshot: null, // copy of case verdict at freeze time
+    },
+  ];
+
   const cases = [
     {
       id: "case-001",
@@ -207,6 +345,10 @@ function makeSeedData() {
         sliceSentence:
           "We are talking about zone NW · A1 in window 15m after trigger Door cycle at stage Mid-cycle.",
       },
+      verificationRunId: null, // selected in /cases/:caseId/verify
+      verdict: null, // set in /cases/:caseId/verdict
+
+      readoutReportId: "rep-001",
     },
   ];
 
@@ -354,7 +496,7 @@ function makeSeedData() {
   ];
 
   return { sites, users, roles, cases, runs, receipts,
-    layouts, runPockets, runMaps };
+    reports, layouts, runPockets, runMaps };
 };
 
 function buildDemoMapField(w, h, seed = 1) {
@@ -487,9 +629,13 @@ function parseRoute(route) {
   // /settings/users
   // /settings/roles
   // /accept-invite/abc123
-  const parts = route.split("/").filter(Boolean);
+  const [path, qs] = route.split("?");
+  const parts = path.split("/").filter(Boolean);
   const r = { page: "overview", params: {} };
 
+
+  // helper to parse query
+  const q = Object.fromEntries(new URLSearchParams(qs || ""));
   if (parts.length === 0) return r;
 
   if (parts[0] === "overview") return { page: "overview", params: {} };
@@ -536,6 +682,13 @@ function parseRoute(route) {
     // SLICE 4:
     if (parts[2] === "pockets") return { page: "casePockets", params: { caseId } };
 
+    // SLICE 5:
+    if (parts[2] === "verify") return { page: "caseVerify", params: { caseId } };
+    if (parts[2] === "verdict") return { page: "caseVerdict", params: { caseId } };
+
+    // SLICE 6:
+    if (parts[2] === "readout") return { page: "caseReadout", params: { caseId } };
+
     return { page: "case", params: { caseId } };
   }
 
@@ -546,6 +699,16 @@ function parseRoute(route) {
   }
 
   if (parts[0] === "runs") {
+
+    if (!parts[1]) return { page: "overview", params: {} };
+
+    if (parts[1] === "compare") {
+      return {
+        page: "runsCompare",
+        params: { left: q.left || "", right: q.right || "" },
+      };
+    }
+
     if (parts[1] === "new") return { page: "runNew", params: {} };
     const runId = parts[1];
     if (parts[2] === "provenance") return { page: "runProvenance", params: { runId } };
@@ -559,8 +722,26 @@ function parseRoute(route) {
     if (parts[2] === "pockets") return { page: "runPockets", params: { runId } };
     if (parts[2] === "map") return { page: "runMap", params: { runId } };
 
+
     return { page: "runProvenance", params: { runId } };
   }
+
+  // SLICE 6: reports
+  if (parts[0] === "reports") {
+    if (parts.length === 1) return { page: "reports", params: {} };
+
+    // /reports/new?case=:caseId
+    if (parts[1] === "new") return { page: "reportNew", params: { caseId: q.case || "" } };
+
+    const reportId = parts[1];
+    if (parts[2] === "view") return { page: "reportView", params: { reportId } };
+    if (parts[2] === "export") return { page: "reportExport", params: { reportId } };
+    if (parts[2] === "receipts") return { page: "reportReceipts", params: { reportId } };
+
+    // default /reports/:reportId
+    return { page: "reportView", params: { reportId } };
+  }
+
 
 
   return { page: "overview", params: {} };
@@ -732,6 +913,7 @@ const NAV = [
   { key: "/receipts", label: "Receipts", icon: FileText },
   { key: "/settings/users", label: "Users", icon: Users },
   { key: "/settings/roles", label: "Roles", icon: Wrench },
+  { key: "/reports", label: "Reports", icon: FolderArchive },
 ];
 
 // -----------------------------
@@ -767,10 +949,37 @@ export default function Slice0SkeletonPOC() {
     [data.receipts, r.params.receiptId]
   );
 
+  /*
+  const compareLeft = useMemo(() => data.runs.find((r) => r.id === r.params.left), [data.runs, r.params.left]);
+  const compareRight = useMemo(() => data.runs.find((r) => r.id === r.params.right), [data.runs, r.params.right]);
+
   const currentLayout = useMemo(() => {
     if (!r.params.siteId || !r.params.roomId) return null;
     return data.layouts?.find((l) => l.siteId === r.params.siteId && l.roomId === r.params.roomId) || null;
   }, [data.layouts, r.params.siteId, r.params.roomId]);
+  */
+
+  const compareLeft = useMemo(
+    () => data.runs.find((run) => run.id === r.params?.left),
+    [data.runs, r.params?.left]
+  );
+  const compareRight = useMemo(
+    () => data.runs.find((run) => run.id === r.params?.right),
+    [data.runs, r.params?.right]
+  );
+
+  const currentLayout = useMemo(() => {
+    const siteId = r.params?.siteId;
+    const roomId = r.params?.roomId;
+    if (!siteId || !roomId) return null;
+    return data.layouts?.find((l) => l.siteId === siteId && l.roomId === roomId) || null;
+  }, [data.layouts, r.params?.siteId, r.params?.roomId]);
+
+
+  const currentReport = useMemo(
+    () => data.reports?.find((x) => x.id === r.params.reportId) || null,
+    [data.reports, r.params.reportId]
+  );
 
   function go(to) {
     setRoute(to);
@@ -933,6 +1142,25 @@ export default function Slice0SkeletonPOC() {
               <RunMapPage data={data} setData={setData} onGo={go} run={currentRun} />
             )}
 
+            {r.page === "caseVerify" && (
+              <CaseVerifyPage data={data} setData={setData} onGo={go} theCase={currentCase} />
+            )}
+            {r.page === "caseVerdict" && (
+              <CaseVerdictPage data={data} setData={setData} onGo={go} theCase={currentCase} />
+            )}
+            {r.page === "runsCompare" && (
+              <RunsComparePage data={data} setData={setData} onGo={go} leftRun={compareLeft} rightRun={compareRight} />
+            )}
+
+            {r.page === "caseReadout" && (
+              <CaseReadoutPage data={data} setData={setData} onGo={go} theCase={currentCase} />
+            )}
+            {r.page === "reports" && <ReportsIndexPage data={data} onGo={go} />}
+            {r.page === "reportNew" && <ReportNewPage data={data} setData={setData} onGo={go} caseId={r.params.caseId} />}
+            {r.page === "reportView" && <ReportViewPage data={data} setData={setData} onGo={go} report={currentReport} />}
+            {r.page === "reportExport" && <ReportExportPage data={data} onGo={go} report={currentReport} />}
+            {r.page === "reportReceipts" && <ReportReceiptsPage data={data} setData={setData} onGo={go} report={currentReport} />}
+
             {/* fallback */}
             {[
               "overview",
@@ -964,6 +1192,18 @@ export default function Slice0SkeletonPOC() {
               "casePockets",
               "runPockets",
               "runMap",
+
+              "caseVerify",
+              "caseVerdict",
+              "runsCompare",
+
+              "caseReadout",
+              "reports",
+              "reportNew",
+              "reportView",
+              "reportExport",
+              "reportReceipts",
+
             ].includes(r.page) ? null : (
               <OverviewPage onGo={go} sites={data.sites} />
             )}
@@ -1594,6 +1834,12 @@ function CaseNewPage({ data, setData, onGo }) {
       siteId,
       roomId,
       definition: { Z: "", tau: "", W: "", S: "", sliceSentence: "" },
+
+      baselineRunId: null,
+      evidenceRunId: null,
+      verificationRunId: null,
+      verdict: null,
+      readoutReportId: null,
     };
     setData((d) => ({ ...d, cases: [c, ...d.cases] }));
     onGo(`/cases/${id}/define`);
@@ -1739,6 +1985,24 @@ function CaseDetailPage({ data, setData, onGo, theCase }) {
             <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/triggers`)}>
               <span className="row" style={{ gap: 8 }}>
                 <Waves size={14} /> Triggers
+              </span>
+            </button>
+
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/verify`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <GitCompare size={14} /> Verify
+              </span>
+            </button>
+
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/verdict`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <Gavel size={14} /> Verdict
+              </span>
+            </button>
+
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/readout`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <FileSearch size={14} /> Readout
               </span>
             </button>
 
@@ -3817,6 +4081,935 @@ function PocketCard({ pocket, onClick, hint }) {
 function findCaseForRoom(data, siteId, roomId) {
   return (data.cases || []).find((c) => c.siteId === siteId && c.roomId === roomId)?.id || null;
 }
+
+function CaseVerifyPage({ data, setData, onGo, theCase }) {
+  if (!theCase) {
+    return (
+      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a case to verify.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const baselineRun = data.runs.find((r) => r.id === theCase.baselineRunId) || null;
+
+  // candidates: runs in same room (you can tighten later)
+  const candidates = data.runs.filter((r) => r.siteId === theCase.siteId && r.roomId === theCase.roomId);
+
+  function selectVerification(runId) {
+    setData((d) => ({
+      ...d,
+      cases: d.cases.map((c) => (c.id === theCase.id ? { ...c, verificationRunId: runId } : c)),
+    }));
+  }
+
+  const verificationRun = data.runs.find((r) => r.id === theCase.verificationRunId) || null;
+  const checklist = comparabilityChecklist(theCase, baselineRun, verificationRun);
+  const compareOk = checklist.every((x) => x.pass);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/cases/${theCase.id}/verify`}
+        title="Verify (choose verification run + comparability checklist)"
+        subtitle="Slice 5: compare without comparability becomes choose-your-own-story. Checklist must be visible."
+        right={
+          <Chip tone={compareOk ? "ok" : "bad"}>
+            <ClipboardList size={14} /> {compareOk ? "Comparable" : "Not comparable"}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.15fr 0.85fr" }}>
+        <Panel meta="Select" title="Verification run" right={<Chip>{candidates.length}</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Baseline</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              {baselineRun ? <b>{baselineRun.label}</b> : "No baseline selected yet."}
+            </div>
+            <div className="text" style={{ marginTop: 8 }}>
+              τ/W ruler: <b>{theCase.triggerBinding?.tau || theCase.definition?.tau || "—"}</b> ·{" "}
+              <b>{theCase.triggerBinding?.windowMin || parseWindowToMin(theCase.definition?.W) || "—"}m</b>
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {candidates.map((r) => {
+              const isBaseline = r.id === theCase.baselineRunId;
+              const isSelected = r.id === theCase.verificationRunId;
+              return (
+                <button
+                  key={r.id}
+                  className={cx("taskRow", isSelected && "taskRow--active")}
+                  onClick={() => selectVerification(r.id)}
+                  disabled={isBaseline}
+                  title={isBaseline ? "Baseline cannot also be the verification run" : "Select verification run"}
+                >
+                  <div className="row" style={{ gap: 10 }}>
+                    <div className="taskIcon">
+                      <GitCompare size={16} />
+                    </div>
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ fontWeight: 750 }}>{r.label}</div>
+                      <div className="kicker" style={{ marginTop: 4 }}>
+                        {r.id} · sensor set {r.inputs?.sensorSet || "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Chip tone={isSelected ? "ok" : "neutral"}>{isBaseline ? "Baseline" : isSelected ? "Selected" : "Select"}</Chip>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}`)}>
+              Back
+            </button>
+            {baselineRun && verificationRun && (
+              <button
+                className="btn btn--primary"
+                onClick={() => onGo(`/runs/compare?left=${baselineRun.id}&right=${verificationRun.id}`)}
+              >
+                <span className="row" style={{ gap: 8 }}>
+                  <GitCompare size={14} /> Open compare
+                </span>
+              </button>
+            )}
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/verdict`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <Gavel size={14} /> Go to verdict
+              </span>
+            </button>
+          </div>
+        </Panel>
+
+        <Panel meta="Checklist" title="Comparability (must be visible)" right={<Chip tone={compareOk ? "ok" : "bad"}>{compareOk ? "Pass" : "Fail"}</Chip>}>
+          {!verificationRun ? (
+            <div className="text">Select a verification run to evaluate comparability.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {checklist.map((c) => (
+                <div key={c.key} className="gateRow">
+                  <div>
+                    <div style={{ fontWeight: 750 }}>{c.label}</div>
+                    {!c.pass && <div className="kicker" style={{ marginTop: 4 }}>{c.whyFail}</div>}
+                  </div>
+                  <Chip tone={c.pass ? "ok" : "bad"}>{c.pass ? <BadgeCheck size={14} /> : <XCircle size={14} />} {c.pass ? "Pass" : "Fail"}</Chip>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Rule</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              If comparability fails, the product must make ABSTAIN downstream the only honest output.
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function RunsComparePage({ data, setData, onGo, leftRun, rightRun }) {
+  if (!leftRun || !rightRun) {
+    return (
+      <Panel meta="Error" title="Compare requires two runs" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Provide left and right run IDs via query string.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const summary = compareSummary(data, leftRun, rightRun);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/runs/compare?left=${leftRun.id}&right=${rightRun.id}`}
+        title="Compare (evidence view)"
+        subtitle="Slice 5: compare UI is evidence. Verdict is separate so you can’t storytime in the compare view."
+        right={
+          <Chip tone="accent">
+            <GitCompare size={14} /> compare
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.1fr 0.9fr" }}>
+        <Panel meta="Left" title={leftRun.label} right={<Chip>{leftRun.id}</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Validity</div>
+            {computeAbstain(leftRun).abstain ? (
+              <Chip tone="bad" style={{ marginTop: 10 }}>
+                <Ban size={14} /> ABSTAIN
+              </Chip>
+            ) : (
+              <Chip tone="ok" style={{ marginTop: 10 }}>
+                <CheckCircle2 size={14} /> OK
+              </Chip>
+            )}
+          </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Top pocket metric (POC)</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              {summary.baseTop ? (
+                <>
+                  <b>{summary.baseTop.label}</b> · severity{" "}
+                  <b>{Math.round(summary.baseTop.severity * 100)}%</b>
+                </>
+              ) : (
+                "No pockets found for left run."
+              )}
+            </div>
+          </div>
+        </Panel>
+
+        <Panel meta="Right" title={rightRun.label} right={<Chip>{rightRun.id}</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Validity</div>
+            {computeAbstain(rightRun).abstain ? (
+              <Chip tone="bad" style={{ marginTop: 10 }}>
+                <Ban size={14} /> ABSTAIN
+              </Chip>
+            ) : (
+              <Chip tone="ok" style={{ marginTop: 10 }}>
+                <CheckCircle2 size={14} /> OK
+              </Chip>
+            )}
+          </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Top pocket metric (POC)</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              {summary.verTop ? (
+                <>
+                  <b>{summary.verTop.label}</b> · severity{" "}
+                  <b>{Math.round(summary.verTop.severity * 100)}%</b>
+                </>
+              ) : (
+                "No pockets found for right run."
+              )}
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel meta="Delta" title="Difference (POC)" right={<Chip tone="accent">evidence</Chip>}>
+        <div className="grid-2">
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Baseline severity</div>
+            <div style={{ fontSize: 28, fontWeight: 800, marginTop: 8 }}>
+              {summary.baseSev == null ? "—" : `${Math.round(summary.baseSev * 100)}%`}
+            </div>
+          </div>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Verification severity</div>
+            <div style={{ fontSize: 28, fontWeight: 800, marginTop: 8 }}>
+              {summary.verSev == null ? "—" : `${Math.round(summary.verSev * 100)}%`}
+            </div>
+          </div>
+        </div>
+
+        <div className="hr" />
+
+        <div className="box" style={{ padding: 14 }}>
+          <div className="kicker">Delta (right - left)</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8 }}>
+            {summary.delta == null ? "—" : `${(summary.delta * 100).toFixed(1)}%`}
+          </div>
+          <div className="text" style={{ marginTop: 10 }}>
+            In production, this becomes windowed comparisons on τ/W, pocket persistence deltas, and repeatability tests.
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function CaseVerdictPage({ data, setData, onGo, theCase }) {
+  if (!theCase) {
+    return (
+      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a case to verdict.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const baselineRun = data.runs.find((r) => r.id === theCase.baselineRunId) || null;
+  const verificationRun = data.runs.find((r) => r.id === theCase.verificationRunId) || null;
+
+  const checklist = comparabilityChecklist(theCase, baselineRun, verificationRun);
+  const compareOk = checklist.every((x) => x.pass);
+
+  const summary =
+    baselineRun && verificationRun ? compareSummary(data, baselineRun, verificationRun) : null;
+
+  const computed = summary ? verdictFrom(compareOk, summary) : { status: "ABSTAIN", label: "ABSTAIN", reasons: ["Missing baseline or verification run."] };
+
+  function setVerdict(v) {
+    setData((d) => ({
+      ...d,
+      cases: d.cases.map((c) => (c.id === theCase.id ? { ...c, verdict: { ...v, when: "Now" } } : c)),
+    }));
+  }
+
+  const locked = theCase.verdict;
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/cases/${theCase.id}/verdict`}
+        title="Verdict"
+        subtitle="Slice 5: verdict is non-arguable. Either “Repeatable once (CONFIDENT)” or ABSTAIN with reasons."
+        right={
+          <Chip tone={computed.status === "CONFIDENT" ? "ok" : "bad"}>
+            <Gavel size={14} /> {computed.status === "CONFIDENT" ? "CONFIDENT" : "ABSTAIN"}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Inputs" title="What the verdict is allowed to use" right={<Chip tone="accent">Slice 5</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Baseline</div>
+            <div className="text" style={{ marginTop: 8 }}>{baselineRun ? baselineRun.label : "— (none)"}</div>
+          </div>
+          <div className="box" style={{ padding: 14, marginTop: 12 }}>
+            <div className="kicker">Verification</div>
+            <div className="text" style={{ marginTop: 8 }}>{verificationRun ? verificationRun.label : "— (none)"}</div>
+          </div>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/verify`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <GitCompare size={14} /> Back to verify
+              </span>
+            </button>
+
+            {baselineRun && verificationRun && (
+              <button className="btn" onClick={() => onGo(`/runs/compare?left=${baselineRun.id}&right=${verificationRun.id}`)}>
+                <span className="row" style={{ gap: 8 }}>
+                  <GitCompare size={14} /> Open compare
+                </span>
+              </button>
+            )}
+          </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Comparability</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              {compareOk ? "PASS" : "FAIL"} — if fail, verdict must ABSTAIN (not warn).
+            </div>
+          </div>
+        </Panel>
+
+        <Panel meta="Output" title="Verdict decision" right={<Chip tone={computed.status === "CONFIDENT" ? "ok" : "bad"}>{computed.label}</Chip>}>
+          {computed.status === "CONFIDENT" ? (
+            <div className="box" style={{ padding: 14, border: "1px solid rgba(34,197,94,0.20)" }}>
+              <div className="kicker">Repeatable once (CONFIDENT)</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                Verdict can only be set when comparability passes and evidence shows improvement on the comparable ruler.
+              </div>
+            </div>
+          ) : (
+            <AbstainBanner
+              reasons={computed.reasons}
+              body={
+                <div className="text" style={{ marginTop: 8 }}>
+                  This is not “being cautious.” It’s being clean: missing comparability or incomplete evidence blocks claims.
+                </div>
+              }
+            />
+          )}
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button
+              className="btn btn--primary"
+              disabled={locked?.status === "CONFIDENT" || locked?.status === "ABSTAIN"}
+              onClick={() => setVerdict(computed)}
+              title={locked ? "Verdict already set (POC lock). In production, this is versioned." : "Set verdict"}
+            >
+              <span className="row" style={{ gap: 8 }}>
+                <Gavel size={14} /> Set verdict
+              </span>
+            </button>
+          </div>
+
+          {locked && (
+            <div className="box" style={{ padding: 14, marginTop: 12 }}>
+              <div className="kicker">Current verdict (stored)</div>
+              <div style={{ fontWeight: 800, marginTop: 8 }}>{locked.label}</div>
+              <div className="kicker" style={{ marginTop: 6 }}>{locked.when}</div>
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function CaseReadoutPage({ data, setData, onGo, theCase }) {
+  if (!theCase) {
+    return (
+      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a case to generate a readout.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
+      </Panel>
+    );
+  }
+
+  // Prefer linked report, else latest report for case
+  const report =
+    (theCase.readoutReportId && data.reports?.find((r) => r.id === theCase.readoutReportId)) ||
+    (data.reports || []).find((r) => r.caseId === theCase.id) ||
+    null;
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/cases/${theCase.id}/readout`}
+        title="Case readout"
+        subtitle="Slice 6: the handoff artifact. No screenshots. A Report object + export + frozen receipts."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <FolderArchive size={14} /> pack
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ArrowLeft size={14} /> Back
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Readout" title="Open or create report" right={<Chip>{report ? "exists" : "none"}</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Rule</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              A “readout” is not a page. It’s a report object you can export, re-open, and defend later.
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn btn--primary" onClick={() => onGo(`/reports/new?case=${theCase.id}`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <FileOutput size={14} /> New report for case
+              </span>
+            </button>
+
+            {report && (
+              <>
+                <button className="btn" onClick={() => onGo(`/reports/${report.id}/view`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <FileSearch size={14} /> View report
+                  </span>
+                </button>
+                <button className="btn" onClick={() => onGo(`/reports/${report.id}/export`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <FileDown size={14} /> Export
+                  </span>
+                </button>
+                <button className="btn" onClick={() => onGo(`/reports/${report.id}/receipts`)}>
+                  <span className="row" style={{ gap: 8 }}>
+                    <ClipboardSignature size={14} /> Receipt bundle
+                  </span>
+                </button>
+              </>
+            )}
+          </div>
+        </Panel>
+
+        <Panel meta="Why" title="Why this survives politics" right={<Chip tone="accent">handoff</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">No screenshot games</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              The report links to frozen receipts. Claims without receipts are not allowed.
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Narrative defense</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              If the org rewrites history, you point to the exported pack and the frozen bundle.
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function ReportsIndexPage({ data, onGo }) {
+  const reports = (data.reports || []).slice();
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker="/reports"
+        title="Reports"
+        subtitle="Index of generated readout packs. Each report must support view + export + frozen receipts."
+        right={
+          <Chip tone="accent">
+            <FolderArchive size={14} /> {reports.length}
+          </Chip>
+        }
+      />
+
+      <Panel meta="Index" title="All reports" right={<Chip>POC</Chip>}>
+        {reports.length === 0 ? (
+          <div className="text">No reports yet. Create one from a Case readout page.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {reports.map((r) => (
+              <button key={r.id} className="taskRow" onClick={() => onGo(`/reports/${r.id}/view`)}>
+                <div className="row" style={{ gap: 10 }}>
+                  <div className="taskIcon">
+                    <FolderArchive size={16} />
+                  </div>
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontWeight: 750 }}>{r.title}</div>
+                    <div className="kicker" style={{ marginTop: 4 }}>
+                      {r.id} · case {r.caseId} · {r.status}
+                    </div>
+                  </div>
+                </div>
+                <span className="taskHint">
+                  Open <ArrowRight size={14} />
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function ReportNewPage({ data, setData, onGo, caseId }) {
+  const theCase = (data.cases || []).find((c) => c.id === caseId) || null;
+  const [title, setTitle] = useState(theCase ? `Pilot Readout — ${theCase.title}` : "Pilot Readout — Top Findings");
+
+  function createReport() {
+    const id = makeId("rep");
+    const rep = {
+      id,
+      caseId: theCase?.id || null,
+      title: title.trim() || "Pilot Readout",
+      createdAt: "Now",
+      owner: theCase?.owner || "Operator",
+      status: "draft",
+      topFindings: [],
+      keyResult: "",
+      nextSteps: [],
+      frozenReceiptIds: [],
+      baselineRunId: theCase?.baselineRunId || null,
+      verificationRunId: theCase?.verificationRunId || null,
+      verdictSnapshot: null,
+    };
+
+    setData((d) => ({
+      ...d,
+      reports: [rep, ...(d.reports || [])],
+      cases: theCase
+        ? d.cases.map((c) => (c.id === theCase.id ? { ...c, readoutReportId: id } : c))
+        : d.cases,
+    }));
+
+    onGo(`/reports/${id}/view`);
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/reports/new${caseId ? `?case=${caseId}` : ""}`}
+        title="New report"
+        subtitle="Create the Report object first. Everything else (view/export/receipts) hangs off this."
+        right={<Chip tone="accent"><FileOutput size={14}/> report</Chip>}
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.1fr 0.9fr" }}>
+        <Panel meta="Inputs" title="Report metadata" right={<Chip>POC</Chip>}>
+          <label className="label" style={{ marginTop: 0 }}>
+            <div className="stat-label">Title</div>
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </label>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(caseId ? `/cases/${caseId}/readout` : "/reports")}>
+              Cancel
+            </button>
+            <button className="btn btn--primary" onClick={createReport}>
+              <span className="row" style={{ gap: 8 }}>
+                <FileOutput size={14} /> Create report
+              </span>
+            </button>
+          </div>
+        </Panel>
+
+        <Panel meta="Rule" title="Why together" right={<Chip tone="warn">anti-screenshot</Chip>}>
+          <div className="text">
+            A readout without a report object becomes a screenshot game.
+            Slice 6 ships view + export + receipts as a unit so handoff is defensible.
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function ReportViewPage({ data, setData, onGo, report }) {
+  if (!report) {
+    return (
+      <Panel meta="Error" title="Report not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a report object.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/reports")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const [findings, setFindings] = useState((report.topFindings || []).join("\n"));
+  const [keyResult, setKeyResult] = useState(report.keyResult || "");
+  const [nextSteps, setNextSteps] = useState((report.nextSteps || []).join("\n"));
+
+  function saveDraft() {
+    setData((d) => ({
+      ...d,
+      reports: (d.reports || []).map((r) =>
+        r.id === report.id
+          ? {
+              ...r,
+              title: report.title,
+              topFindings: findings.split("\n").map((s) => s.trim()).filter(Boolean),
+              keyResult: keyResult.trim(),
+              nextSteps: nextSteps.split("\n").map((s) => s.trim()).filter(Boolean),
+            }
+          : r
+      ),
+    }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/reports/${report.id}/view`}
+        title={report.title}
+        subtitle="Draft view. In Slice 6 this is the canonical readout surface (not a dashboard homepage)."
+        right={
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Chip tone="accent">
+              <FolderArchive size={14} /> {report.status}
+            </Chip>
+            <button className="btn" onClick={() => onGo(`/reports/${report.id}/export`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <FileDown size={14} /> Export
+              </span>
+            </button>
+            <button className="btn" onClick={() => onGo(`/reports/${report.id}/receipts`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <ClipboardSignature size={14} /> Receipts
+              </span>
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Report" title="Content (draft)" right={<Chip>editable</Chip>}>
+          <label className="label" style={{ marginTop: 0 }}>
+            <div className="stat-label">Top findings (one per line)</div>
+            <textarea className="textarea" rows={7} value={findings} onChange={(e) => setFindings(e.target.value)} />
+          </label>
+
+          <label className="label">
+            <div className="stat-label">Key result</div>
+            <input className="input" value={keyResult} onChange={(e) => setKeyResult(e.target.value)} />
+          </label>
+
+          <label className="label">
+            <div className="stat-label">Next steps (one per line)</div>
+            <textarea className="textarea" rows={6} value={nextSteps} onChange={(e) => setNextSteps(e.target.value)} />
+          </label>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo("/reports")}>Back</button>
+            <button className="btn btn--primary" onClick={saveDraft}>
+              <span className="row" style={{ gap: 8 }}>
+                <BadgeCheck size={14} /> Save draft
+              </span>
+            </button>
+          </div>
+        </Panel>
+
+        <Panel meta="Handoff" title="What makes it defensible" right={<Chip tone="warn">anti-politics</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Rule</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              Report claims must be backed by the frozen receipt bundle.
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Next step</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              Go to <b>Receipts</b> and freeze the bundle used for this readout.
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function ReportReceiptsPage({ data, setData, onGo, report }) {
+  if (!report) {
+    return (
+      <Panel meta="Error" title="Report not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a report object.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/reports")}>Back</button>
+      </Panel>
+    );
+  }
+
+  // candidate receipts: receipts attached to the case (or runs used by the case)
+  const candidates = (data.receipts || []).filter((rcpt) => rcpt.caseId === report.caseId);
+
+  function toggleReceipt(id) {
+    setData((d) => ({
+      ...d,
+      reports: (d.reports || []).map((r) => {
+        if (r.id !== report.id) return r;
+        const set = new Set(r.frozenReceiptIds || []);
+        if (set.has(id)) set.delete(id);
+        else set.add(id);
+        return { ...r, frozenReceiptIds: Array.from(set) };
+      }),
+    }));
+  }
+
+  function freezeBundle() {
+    // freeze report + snapshot verdict
+    const caseObj = (data.cases || []).find((c) => c.id === report.caseId);
+    setData((d) => ({
+      ...d,
+      reports: (d.reports || []).map((r) =>
+        r.id === report.id
+          ? {
+              ...r,
+              status: "frozen",
+              verdictSnapshot: caseObj?.verdict || null,
+            }
+          : r
+      ),
+    }));
+  }
+
+  const selected = new Set(report.frozenReceiptIds || []);
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/reports/${report.id}/receipts`}
+        title="Frozen receipt bundle"
+        subtitle="This is the anti-politics mechanism: the report links to the exact receipts used for the claims."
+        right={
+          <Chip tone={report.status === "frozen" ? "ok" : "warn"}>
+            <ClipboardSignature size={14} /> {report.status}
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.15fr 0.85fr" }}>
+        <Panel meta="Select" title="Receipts to include" right={<Chip>{candidates.length}</Chip>}>
+          {candidates.length === 0 ? (
+            <div className="text">No receipts found for this case. Generate receipts from runs first (Slice 2).</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {candidates.map((rcpt) => {
+                const on = selected.has(rcpt.id);
+                return (
+                  <button
+                    key={rcpt.id}
+                    className={cx("taskRow", on && "taskRow--active")}
+                    onClick={() => toggleReceipt(rcpt.id)}
+                  >
+                    <div className="row" style={{ gap: 10 }}>
+                      <div className="taskIcon">
+                        <FileText size={16} />
+                      </div>
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ fontWeight: 750 }}>{rcpt.title}</div>
+                        <div className="kicker" style={{ marginTop: 4 }}>
+                          {rcpt.id} · {rcpt.when}
+                        </div>
+                      </div>
+                    </div>
+                    <Chip tone={on ? "ok" : "neutral"}>{on ? "Included" : "Include"}</Chip>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+
+        <Panel meta="Freeze" title="Lock the handoff pack" right={<Chip tone="accent">Slice 6</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Selected</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              {selected.size} receipt(s) included.
+            </div>
+          </div>
+
+          <div className="hr" />
+
+          <button className="btn btn--primary" onClick={freezeBundle} disabled={selected.size === 0}>
+            <span className="row" style={{ gap: 8 }}>
+              <ClipboardSignature size={14} /> Freeze bundle
+            </span>
+          </button>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/reports/${report.id}/view`)}>
+              Back to report
+            </button>
+            <button className="btn" onClick={() => onGo(`/reports/${report.id}/export`)}>
+              Export pack
+            </button>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function ReportExportPage({ data, onGo, report }) {
+  if (!report) {
+    return (
+      <Panel meta="Error" title="Report not found" right={<Chip tone="bad">missing</Chip>}>
+        <div className="text">Need a report object.</div>
+        <div className="hr" />
+        <button className="btn" onClick={() => onGo("/reports")}>Back</button>
+      </Panel>
+    );
+  }
+
+  const receipts = (data.receipts || []).filter((r) => (report.frozenReceiptIds || []).includes(r.id));
+  const caseObj = (data.cases || []).find((c) => c.id === report.caseId);
+  const verdict = report.verdictSnapshot || caseObj?.verdict || null;
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Header
+        kicker={`/reports/${report.id}/export`}
+        title="Export pack (POC)"
+        subtitle="In production: PDF + JSON bundle + attachments. Here: a printable pack preview + copyable blocks."
+        right={
+          <Chip tone="accent">
+            <FileDown size={14} /> export
+          </Chip>
+        }
+      />
+
+      <div className="grid-2" style={{ gridTemplateColumns: "1.15fr 0.85fr" }}>
+        <Panel meta="Preview" title="Pack contents" right={<Chip>{receipts.length} receipts</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Report</div>
+            <div style={{ fontWeight: 800, marginTop: 8 }}>{report.title}</div>
+            <div className="kicker" style={{ marginTop: 6 }}>
+              status: {report.status} · created: {report.createdAt}
+            </div>
+          </div>
+
+          <div className="box" style={{ padding: 14, marginTop: 12 }}>
+            <div className="kicker">Key result</div>
+            <div className="text" style={{ marginTop: 8 }}>{report.keyResult || "—"}</div>
+          </div>
+
+          <div className="box" style={{ padding: 14, marginTop: 12 }}>
+            <div className="kicker">Verdict snapshot</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              {verdict ? <b>{verdict.label}</b> : "—"}
+            </div>
+          </div>
+
+          <div className="box" style={{ padding: 14, marginTop: 12 }}>
+            <div className="kicker">Receipts included</div>
+            <ul className="ul" style={{ marginTop: 10 }}>
+              {receipts.length === 0 ? <li>None selected.</li> : receipts.map((r) => <li key={r.id}>{r.id} · {r.title}</li>)}
+            </ul>
+          </div>
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => onGo(`/reports/${report.id}/view`)}>Back to report</button>
+            <button className="btn" onClick={() => onGo(`/reports/${report.id}/receipts`)}>Receipt bundle</button>
+          </div>
+        </Panel>
+
+        <Panel meta="Handoff" title="What makes it “survive politics”" right={<Chip tone="warn">anti-screenshot</Chip>}>
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Rule</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              Export must include the frozen receipt bundle. Otherwise it’s just a screenshot with vibes.
+            </div>
+          </div>
+          <div className="hr" />
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">POC note</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              You can later swap this page to generate a real PDF and zip export.
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
 
 /* =========================================================
    8) Optional: CSS tweaks (if you want select styling)
