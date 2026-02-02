@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { getRoomData } from "../../data/adapters/index.js";
+import { getRoomData } from "src/data/adapters/index.js";
 import { DEFAULT_CONTROLS, THRESHOLDS } from "../../lib/constants.js";
 import { fmtTime } from "../../lib/utils.js";
 import { zoneName as zoneNameSim } from "../../data/simulator/fieldModel.js";

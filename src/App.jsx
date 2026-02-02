@@ -748,18 +748,6 @@ export default function Slice0SkeletonPOC() {
   }
   const engine = engineRef.current;
 
-
-
-  /*
-  const compareLeft = useMemo(() => data.runs.find((r) => r.id === r.params.left), [data.runs, r.params.left]);
-  const compareRight = useMemo(() => data.runs.find((r) => r.id === r.params.right), [data.runs, r.params.right]);
-
-  const currentLayout = useMemo(() => {
-    if (!r.params.siteId || !r.params.roomId) return null;
-    return data.layouts?.find((l) => l.siteId === r.params.siteId && l.roomId === r.params.roomId) || null;
-  }, [data.layouts, r.params.siteId, r.params.roomId]);
-  */
-
   const compareLeft = useMemo(
     () => data.runs.find((run) => run.id === r.params?.left),
     [data.runs, r.params?.left]
@@ -1343,17 +1331,3 @@ a{ color: inherit; }
 `}</style>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
