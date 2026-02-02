@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useEffect, useState } from "react";
+//import {
+//  OverviewPage
+//} from "./page";
 import {
   BadgeCheck,
   Building2,
@@ -14,15 +17,11 @@ import {
   Users,
   Wrench,
   ArrowRight,
-} from "lucide-react";
-import {
   ClipboardList,
   FilePlus2,
   Tag,
   Timer,
   Layers,
-} from "lucide-react";
-import {
   Ban,
   CheckCircle2,
   HelpCircle,
@@ -34,38 +33,31 @@ import {
   Database,
   ClipboardCheck,
   ArrowLeft,
-} from "lucide-react";
-
-import {
   CalendarClock,
   Link2,
   Waves,
   ListChecks,
   ChevronRight,
-} from "lucide-react";
-
-import {
   Map as MapIcon,
   MapPin,
   Layers as LayersIcon,
   ListOrdered,
   Compass,
   Target,
-} from "lucide-react";
-
-import { 
   GitCompare, 
   Gavel, 
-  XCircle 
-} from "lucide-react";
-
-import { 
+  XCircle, 
   FileOutput, 
   FolderArchive, 
   FileSearch, 
   FileDown, 
   ClipboardSignature 
 } from "lucide-react";
+
+  // inside Slice0SkeletonPOC()
+import { createPortalEngine } from "./portal_engine.js";
+import { Clock, IdGen, Telemetry } from "./infra.js";
+
 
 
 
@@ -949,6 +941,24 @@ export default function Slice0SkeletonPOC() {
     [data.receipts, r.params.receiptId]
   );
 
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; }, [data]);
+
+  const engineRef = useRef(null);
+  if (!engineRef.current) {
+    const getData = () => dataRef.current;
+    engineRef.current = createPortalEngine({
+      getData,
+      setData,
+      clock: Clock.create(),
+      idGen: IdGen.create(),
+      telemetry: Telemetry.create(),
+    });
+  }
+  const engine = engineRef.current;
+
+
+
   /*
   const compareLeft = useMemo(() => data.runs.find((r) => r.id === r.params.left), [data.runs, r.params.left]);
   const compareRight = useMemo(() => data.runs.find((r) => r.id === r.params.right), [data.runs, r.params.right]);
@@ -1100,14 +1110,16 @@ export default function Slice0SkeletonPOC() {
           </aside>
 
           <main className="main">
-            {r.page === "overview" && <OverviewPage onGo={go} sites={data.sites} />}
+            {r.page === "overview" && <OverviewPage onGo={go} sites={data.sites}/>}
             {r.page === "sites" && <SitesPage sites={data.sites} onGo={go} />}
             {r.page === "site" && <SiteDetailPage site={site} onGo={go} />}
             {r.page === "rooms" && <RoomsPage site={site} onGo={go} />}
             {r.page === "room" && <RoomDetailPage site={site} room={room} onGo={go} />}
             {r.page === "roomSummary" && <RoomSummaryPage site={site} room={room} onGo={go} />}
             {r.page === "cases" && <CasesListPage data={data} onGo={go} />}
-            {r.page === "caseNew" && <CaseNewPage data={data} setData={setData} onGo={go} />}
+            {r.page === "caseNew" && (
+  <CaseNewPage data={data} setData={setData} onGo={go} engine={engine} />
+)}
             {r.page === "case" && <CaseDetailPage data={data} setData={setData} onGo={go} theCase={currentCase} />}
             {r.page === "caseDefine" && <CaseDefinePage data={data} setData={setData} onGo={go} theCase={currentCase} />}
             {r.page === "settingsUsers" && (
@@ -1119,8 +1131,12 @@ export default function Slice0SkeletonPOC() {
             )}
             {r.page === "runNew" && <RunNewPage data={data} setData={setData} onGo={go} />}
             {r.page === "runProvenance" && <RunProvenancePage data={data} setData={setData} onGo={go} run={currentRun} />}
-            {r.page === "runValidity" && <RunValidityPage data={data} setData={setData} onGo={go} run={currentRun} />}
-            {r.page === "runReceipts" && <RunReceiptsPage data={data} setData={setData} onGo={go} run={currentRun} />}
+            {r.page === "runValidity" && (
+              <RunValidityPage data={data} setData={setData} onGo={go} run={currentRun} engine={engine} />
+            )}
+            {r.page === "runReceipts" && (
+              <RunReceiptsPage data={data} setData={setData} onGo={go} run={currentRun} engine={engine} />
+            )}
             {r.page === "receipts" && <ReceiptsIndexPage data={data} onGo={go} />}
             {r.page === "receipt" && <ReceiptDetailPage data={data} onGo={go} receipt={currentReceipt} />}
             {r.page === "settingsRoles" && <SettingsRolesPage roles={data.roles} />}
@@ -1142,11 +1158,12 @@ export default function Slice0SkeletonPOC() {
               <RunMapPage data={data} setData={setData} onGo={go} run={currentRun} />
             )}
 
+
             {r.page === "caseVerify" && (
               <CaseVerifyPage data={data} setData={setData} onGo={go} theCase={currentCase} />
             )}
             {r.page === "caseVerdict" && (
-              <CaseVerdictPage data={data} setData={setData} onGo={go} theCase={currentCase} />
+              <CaseVerdictPage data={data} setData={setData} onGo={go} theCase={currentCase} engine={engine} />
             )}
             {r.page === "runsCompare" && (
               <RunsComparePage data={data} setData={setData} onGo={go} leftRun={compareLeft} rightRun={compareRight} />
@@ -1220,7 +1237,8 @@ export default function Slice0SkeletonPOC() {
 // -----------------------------
 // Pages (Slice 0)
 // -----------------------------
-function OverviewPage({ onGo, sites }) {
+
+export function OverviewPage({ onGo, sites }) {
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <Header
@@ -1808,7 +1826,7 @@ function CasesListPage({ data, onGo }) {
   );
 }
 
-function CaseNewPage({ data, setData, onGo }) {
+function CaseNewPage({ data, setData, onGo, engine }) {
   const [title, setTitle] = useState("New case");
   const [siteId, setSiteId] = useState(data.sites[0]?.id || "");
   const site = data.sites.find((s) => s.id === siteId);
@@ -1823,25 +1841,14 @@ function CaseNewPage({ data, setData, onGo }) {
   }, [siteId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function createCase() {
-    if (!title.trim() || !siteId || !roomId) return;
-    const id = makeId("case");
-    const c = {
-      id,
-      title: title.trim(),
-      status: "defining",
-      createdAt: "Today",
-      owner,
-      siteId,
-      roomId,
-      definition: { Z: "", tau: "", W: "", S: "", sliceSentence: "" },
+    if (!engine) return;
 
-      baselineRunId: null,
-      evidenceRunId: null,
-      verificationRunId: null,
-      verdict: null,
-      readoutReportId: null,
-    };
-    setData((d) => ({ ...d, cases: [c, ...d.cases] }));
+    if (!title.trim() || !siteId || !roomId) return;
+
+    // ✅ use engine for ID + canonical case insertion (no double-insert)
+    const id = engine.createCase({ title, siteId, roomId, owner });
+
+    // go straight to define page (Slice 1 contract)
     onGo(`/cases/${id}/define`);
   }
 
@@ -1868,7 +1875,11 @@ function CaseNewPage({ data, setData, onGo }) {
 
             <label className="label" style={{ marginTop: 0 }}>
               <div className="stat-label">Site</div>
-              <select className="input" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+              <select
+                className="input"
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+              >
                 {data.sites.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -1879,7 +1890,11 @@ function CaseNewPage({ data, setData, onGo }) {
 
             <label className="label" style={{ marginTop: 0 }}>
               <div className="stat-label">Room</div>
-              <select className="input" value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+              <select
+                className="input"
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value)}
+              >
                 {(data.sites.find((s) => s.id === siteId)?.rooms || []).map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -1897,7 +1912,12 @@ function CaseNewPage({ data, setData, onGo }) {
               <button className="btn" onClick={() => onGo("/cases")}>
                 Cancel
               </button>
-              <button className="btn btn--primary" onClick={createCase} disabled={!title.trim() || !siteId || !roomId}>
+              <button
+                className="btn btn--primary"
+                onClick={createCase}
+                disabled={!title.trim() || !siteId || !roomId || !engine}
+                title={!engine ? "Engine missing (pass engine as prop)" : ""}
+              >
                 <span className="row" style={{ gap: 8 }}>
                   <FilePlus2 size={14} /> Create & define
                 </span>
@@ -1922,6 +1942,7 @@ function CaseNewPage({ data, setData, onGo }) {
     </div>
   );
 }
+
 
 function CaseDetailPage({ data, setData, onGo, theCase }) {
   if (!theCase) {
@@ -2673,13 +2694,15 @@ function RunProvenancePage({ data, setData, onGo, run }) {
   );
 }
 
-function RunValidityPage({ data, setData, onGo, run }) {
+function RunValidityPage({ data, setData, onGo, run, engine }) {
   if (!run) {
     return (
       <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
         <div className="text">No run object to gate.</div>
         <div className="hr" />
-        <button className="btn" onClick={() => onGo("/runs/new")}>Create run</button>
+        <button className="btn" onClick={() => onGo("/runs/new")}>
+          Create run
+        </button>
       </Panel>
     );
   }
@@ -2687,10 +2710,16 @@ function RunValidityPage({ data, setData, onGo, run }) {
   const abst = computeAbstain(run);
 
   function setGate(key, value) {
-    setData((d) => ({
-      ...d,
-      runs: d.runs.map((x) => (x.id === run.id ? { ...x, gates: { ...x.gates, [key]: value } } : x)),
-    }));
+    if (!engine) return;
+
+    // ✅ canonical mutation path (no duplicated setData logic)
+    engine.setGate(run.id, key, value);
+
+    // If you haven't implemented engine.setGate yet, temporary fallback:
+    // setData((d) => ({
+    //   ...d,
+    //   runs: d.runs.map((x) => (x.id === run.id ? { ...x, gates: { ...x.gates, [key]: value } } : x)),
+    // }));
   }
 
   return (
@@ -2728,10 +2757,20 @@ function RunValidityPage({ data, setData, onGo, run }) {
                 <FileText size={14} /> Continue to receipts
               </span>
             </button>
+
+            {!engine && (
+              <Chip tone="warn">
+                <HelpCircle size={14} /> engine missing
+              </Chip>
+            )}
           </div>
         </Panel>
 
-        <Panel meta="Result" title="Downstream posture" right={<Chip tone={abst.abstain ? "bad" : "ok"}>{abst.abstain ? "ABSTAIN" : "OK"}</Chip>}>
+        <Panel
+          meta="Result"
+          title="Downstream posture"
+          right={<Chip tone={abst.abstain ? "bad" : "ok"}>{abst.abstain ? "ABSTAIN" : "OK"}</Chip>}
+        >
           {abst.abstain ? (
             <AbstainBanner
               reasons={abst.reasons}
@@ -2774,7 +2813,7 @@ function RunValidityPage({ data, setData, onGo, run }) {
   );
 }
 
-function RunReceiptsPage({ data, setData, onGo, run }) {
+function RunReceiptsPage({ data, setData, onGo, run, engine }) {
   if (!run) {
     return (
       <Panel meta="Error" title="Run not found" right={<Chip tone="bad">missing</Chip>}>
@@ -2789,27 +2828,8 @@ function RunReceiptsPage({ data, setData, onGo, run }) {
   const runReceipts = data.receipts.filter((r) => r.runId === run.id);
 
   function generateReceiptBundle() {
-    const id = makeId("rcpt");
-    const bullets = [
-      run.inputs.filesAttached ? "Inputs attached and hashed" : "Inputs missing (still recorded)",
-      `Provenance recorded: sensor set=${run.inputs.sensorSet}, firmware=${run.inputs.firmware}`,
-      `Validity gates evaluated`,
-      ...(abst.abstain
-        ? [`ABSTAIN asserted: ${abst.reasons.join(" · ")}`]
-        : ["Interpretation allowed: critical gates PASS"]),
-    ];
-
-    const receipt = {
-      id,
-      runId: run.id,
-      caseId: run.caseId || null,
-      title: `Receipt bundle · ${abst.abstain ? "ABSTAIN" : "OK to interpret"}`,
-      when: "Now",
-      frozen: true,
-      bullets,
-    };
-
-    setData((d) => ({ ...d, receipts: [receipt, ...d.receipts] }));
+    if (!engine) return;
+    engine.generateReceipt(run.id);
   }
 
   return (
@@ -4082,11 +4102,12 @@ function findCaseForRoom(data, siteId, roomId) {
   return (data.cases || []).find((c) => c.siteId === siteId && c.roomId === roomId)?.id || null;
 }
 
-function CaseVerifyPage({ data, setData, onGo, theCase }) {
+
+function CaseVerdictPage({ data, setData, onGo, theCase, engine }) {
   if (!theCase) {
     return (
       <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
-        <div className="text">Need a case to verify.</div>
+        <div className="text">Need a case to verdict.</div>
         <div className="hr" />
         <button className="btn" onClick={() => onGo("/cases")}>Back</button>
       </Panel>
@@ -4094,88 +4115,77 @@ function CaseVerifyPage({ data, setData, onGo, theCase }) {
   }
 
   const baselineRun = data.runs.find((r) => r.id === theCase.baselineRunId) || null;
-
-  // candidates: runs in same room (you can tighten later)
-  const candidates = data.runs.filter((r) => r.siteId === theCase.siteId && r.roomId === theCase.roomId);
-
-  function selectVerification(runId) {
-    setData((d) => ({
-      ...d,
-      cases: d.cases.map((c) => (c.id === theCase.id ? { ...c, verificationRunId: runId } : c)),
-    }));
-  }
-
   const verificationRun = data.runs.find((r) => r.id === theCase.verificationRunId) || null;
+
   const checklist = comparabilityChecklist(theCase, baselineRun, verificationRun);
   const compareOk = checklist.every((x) => x.pass);
+
+  const summary =
+    baselineRun && verificationRun ? compareSummary(data, baselineRun, verificationRun) : null;
+
+  const computed = summary
+    ? verdictFrom(compareOk, summary)
+    : { status: "ABSTAIN", label: "ABSTAIN", reasons: ["Missing baseline or verification run."] };
+
+  const locked = theCase.verdict;
+
+  function setVerdict() {
+    if (!engine) return;
+
+    // ✅ canonical mutation path
+    // engine should stamp time + emit telemetry; it can also recompute internally
+    engine.setCaseVerdict(theCase.id);
+
+    // If you haven't implemented engine.setCaseVerdict yet, temporary fallback:
+    // setData((d) => ({
+    //   ...d,
+    //   cases: d.cases.map((c) =>
+    //     c.id === theCase.id ? { ...c, verdict: { ...computed, when: "Now" } } : c
+    //   ),
+    // }));
+  }
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <Header
-        kicker={`/cases/${theCase.id}/verify`}
-        title="Verify (choose verification run + comparability checklist)"
-        subtitle="Slice 5: compare without comparability becomes choose-your-own-story. Checklist must be visible."
+        kicker={`/cases/${theCase.id}/verdict`}
+        title="Verdict"
+        subtitle="Slice 5: verdict is non-arguable. Either “Repeatable once (CONFIDENT)” or ABSTAIN with reasons."
         right={
-          <Chip tone={compareOk ? "ok" : "bad"}>
-            <ClipboardList size={14} /> {compareOk ? "Comparable" : "Not comparable"}
+          <Chip tone={computed.status === "CONFIDENT" ? "ok" : "bad"}>
+            <Gavel size={14} /> {computed.status === "CONFIDENT" ? "CONFIDENT" : "ABSTAIN"}
           </Chip>
         }
       />
 
-      <div className="grid-2" style={{ gridTemplateColumns: "1.15fr 0.85fr" }}>
-        <Panel meta="Select" title="Verification run" right={<Chip>{candidates.length}</Chip>}>
+      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
+        <Panel meta="Inputs" title="What the verdict is allowed to use" right={<Chip tone="accent">Slice 5</Chip>}>
           <div className="box" style={{ padding: 14 }}>
             <div className="kicker">Baseline</div>
             <div className="text" style={{ marginTop: 8 }}>
-              {baselineRun ? <b>{baselineRun.label}</b> : "No baseline selected yet."}
-            </div>
-            <div className="text" style={{ marginTop: 8 }}>
-              τ/W ruler: <b>{theCase.triggerBinding?.tau || theCase.definition?.tau || "—"}</b> ·{" "}
-              <b>{theCase.triggerBinding?.windowMin || parseWindowToMin(theCase.definition?.W) || "—"}m</b>
+              {baselineRun ? baselineRun.label : "— (none)"}
             </div>
           </div>
 
-          <div className="hr" />
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {candidates.map((r) => {
-              const isBaseline = r.id === theCase.baselineRunId;
-              const isSelected = r.id === theCase.verificationRunId;
-              return (
-                <button
-                  key={r.id}
-                  className={cx("taskRow", isSelected && "taskRow--active")}
-                  onClick={() => selectVerification(r.id)}
-                  disabled={isBaseline}
-                  title={isBaseline ? "Baseline cannot also be the verification run" : "Select verification run"}
-                >
-                  <div className="row" style={{ gap: 10 }}>
-                    <div className="taskIcon">
-                      <GitCompare size={16} />
-                    </div>
-                    <div style={{ textAlign: "left" }}>
-                      <div style={{ fontWeight: 750 }}>{r.label}</div>
-                      <div className="kicker" style={{ marginTop: 4 }}>
-                        {r.id} · sensor set {r.inputs?.sensorSet || "—"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <Chip tone={isSelected ? "ok" : "neutral"}>{isBaseline ? "Baseline" : isSelected ? "Selected" : "Select"}</Chip>
-                </button>
-              );
-            })}
+          <div className="box" style={{ padding: 14, marginTop: 12 }}>
+            <div className="kicker">Verification</div>
+            <div className="text" style={{ marginTop: 8 }}>
+              {verificationRun ? verificationRun.label : "— (none)"}
+            </div>
           </div>
 
           <div className="hr" />
 
           <div className="row" style={{ flexWrap: "wrap" }}>
-            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}`)}>
-              Back
+            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/verify`)}>
+              <span className="row" style={{ gap: 8 }}>
+                <GitCompare size={14} /> Back to verify
+              </span>
             </button>
+
             {baselineRun && verificationRun && (
               <button
-                className="btn btn--primary"
+                className="btn"
                 onClick={() => onGo(`/runs/compare?left=${baselineRun.id}&right=${verificationRun.id}`)}
               >
                 <span className="row" style={{ gap: 8 }}>
@@ -4183,39 +4193,103 @@ function CaseVerifyPage({ data, setData, onGo, theCase }) {
                 </span>
               </button>
             )}
-            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/verdict`)}>
-              <span className="row" style={{ gap: 8 }}>
-                <Gavel size={14} /> Go to verdict
-              </span>
-            </button>
           </div>
-        </Panel>
-
-        <Panel meta="Checklist" title="Comparability (must be visible)" right={<Chip tone={compareOk ? "ok" : "bad"}>{compareOk ? "Pass" : "Fail"}</Chip>}>
-          {!verificationRun ? (
-            <div className="text">Select a verification run to evaluate comparability.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {checklist.map((c) => (
-                <div key={c.key} className="gateRow">
-                  <div>
-                    <div style={{ fontWeight: 750 }}>{c.label}</div>
-                    {!c.pass && <div className="kicker" style={{ marginTop: 4 }}>{c.whyFail}</div>}
-                  </div>
-                  <Chip tone={c.pass ? "ok" : "bad"}>{c.pass ? <BadgeCheck size={14} /> : <XCircle size={14} />} {c.pass ? "Pass" : "Fail"}</Chip>
-                </div>
-              ))}
-            </div>
-          )}
 
           <div className="hr" />
 
           <div className="box" style={{ padding: 14 }}>
-            <div className="kicker">Rule</div>
+            <div className="kicker">Comparability</div>
             <div className="text" style={{ marginTop: 8 }}>
-              If comparability fails, the product must make ABSTAIN downstream the only honest output.
+              {compareOk ? "PASS" : "FAIL"} — if fail, verdict must ABSTAIN (not warn).
             </div>
           </div>
+
+          <div className="hr" />
+
+          <div className="box" style={{ padding: 14 }}>
+            <div className="kicker">Checklist</div>
+            {!verificationRun ? (
+              <div className="text" style={{ marginTop: 8 }}>
+                Select a verification run to evaluate comparability.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                {checklist.map((c) => (
+                  <div key={c.key} className="gateRow">
+                    <div>
+                      <div style={{ fontWeight: 750 }}>{c.label}</div>
+                      {!c.pass && <div className="kicker" style={{ marginTop: 4 }}>{c.whyFail}</div>}
+                    </div>
+                    <Chip tone={c.pass ? "ok" : "bad"}>
+                      {c.pass ? <BadgeCheck size={14} /> : <XCircle size={14} />} {c.pass ? "Pass" : "Fail"}
+                    </Chip>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Panel>
+
+        <Panel
+          meta="Output"
+          title="Verdict decision"
+          right={<Chip tone={computed.status === "CONFIDENT" ? "ok" : "bad"}>{computed.label}</Chip>}
+        >
+          {computed.status === "CONFIDENT" ? (
+            <div className="box" style={{ padding: 14, border: "1px solid rgba(34,197,94,0.20)" }}>
+              <div className="kicker">Repeatable once (CONFIDENT)</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                Verdict can only be set when comparability passes and evidence shows improvement on the comparable ruler.
+              </div>
+            </div>
+          ) : (
+            <AbstainBanner
+              reasons={computed.reasons}
+              body={
+                <div className="text" style={{ marginTop: 8 }}>
+                  This is not “being cautious.” It’s being clean: missing comparability or incomplete evidence blocks claims.
+                </div>
+              }
+            />
+          )}
+
+          <div className="hr" />
+
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <button
+              className="btn btn--primary"
+              disabled={!engine || Boolean(locked?.status)}
+              onClick={setVerdict}
+              title={
+                !engine
+                  ? "Engine missing (pass engine as prop)"
+                  : locked
+                  ? "Verdict already set (POC lock). In production, this is versioned."
+                  : "Set verdict"
+              }
+            >
+              <span className="row" style={{ gap: 8 }}>
+                <Gavel size={14} /> Set verdict
+              </span>
+            </button>
+          </div>
+
+          {locked && (
+            <div className="box" style={{ padding: 14, marginTop: 12 }}>
+              <div className="kicker">Current verdict (stored)</div>
+              <div style={{ fontWeight: 800, marginTop: 8 }}>{locked.label}</div>
+              <div className="kicker" style={{ marginTop: 6 }}>{locked.when}</div>
+            </div>
+          )}
+
+          {!baselineRun || !verificationRun ? (
+            <div className="box" style={{ padding: 14, marginTop: 12 }}>
+              <div className="kicker">Missing inputs</div>
+              <div className="text" style={{ marginTop: 8 }}>
+                Select a baseline and a verification run before you can set a verdict.
+              </div>
+            </div>
+          ) : null}
         </Panel>
       </div>
     </div>
@@ -4344,135 +4418,6 @@ function RunsComparePage({ data, setData, onGo, leftRun, rightRun }) {
   );
 }
 
-function CaseVerdictPage({ data, setData, onGo, theCase }) {
-  if (!theCase) {
-    return (
-      <Panel meta="Error" title="Case not found" right={<Chip tone="bad">missing</Chip>}>
-        <div className="text">Need a case to verdict.</div>
-        <div className="hr" />
-        <button className="btn" onClick={() => onGo("/cases")}>Back</button>
-      </Panel>
-    );
-  }
-
-  const baselineRun = data.runs.find((r) => r.id === theCase.baselineRunId) || null;
-  const verificationRun = data.runs.find((r) => r.id === theCase.verificationRunId) || null;
-
-  const checklist = comparabilityChecklist(theCase, baselineRun, verificationRun);
-  const compareOk = checklist.every((x) => x.pass);
-
-  const summary =
-    baselineRun && verificationRun ? compareSummary(data, baselineRun, verificationRun) : null;
-
-  const computed = summary ? verdictFrom(compareOk, summary) : { status: "ABSTAIN", label: "ABSTAIN", reasons: ["Missing baseline or verification run."] };
-
-  function setVerdict(v) {
-    setData((d) => ({
-      ...d,
-      cases: d.cases.map((c) => (c.id === theCase.id ? { ...c, verdict: { ...v, when: "Now" } } : c)),
-    }));
-  }
-
-  const locked = theCase.verdict;
-
-  return (
-    <div style={{ display: "grid", gap: 18 }}>
-      <Header
-        kicker={`/cases/${theCase.id}/verdict`}
-        title="Verdict"
-        subtitle="Slice 5: verdict is non-arguable. Either “Repeatable once (CONFIDENT)” or ABSTAIN with reasons."
-        right={
-          <Chip tone={computed.status === "CONFIDENT" ? "ok" : "bad"}>
-            <Gavel size={14} /> {computed.status === "CONFIDENT" ? "CONFIDENT" : "ABSTAIN"}
-          </Chip>
-        }
-      />
-
-      <div className="grid-2" style={{ gridTemplateColumns: "1.2fr 0.8fr" }}>
-        <Panel meta="Inputs" title="What the verdict is allowed to use" right={<Chip tone="accent">Slice 5</Chip>}>
-          <div className="box" style={{ padding: 14 }}>
-            <div className="kicker">Baseline</div>
-            <div className="text" style={{ marginTop: 8 }}>{baselineRun ? baselineRun.label : "— (none)"}</div>
-          </div>
-          <div className="box" style={{ padding: 14, marginTop: 12 }}>
-            <div className="kicker">Verification</div>
-            <div className="text" style={{ marginTop: 8 }}>{verificationRun ? verificationRun.label : "— (none)"}</div>
-          </div>
-
-          <div className="hr" />
-
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            <button className="btn" onClick={() => onGo(`/cases/${theCase.id}/verify`)}>
-              <span className="row" style={{ gap: 8 }}>
-                <GitCompare size={14} /> Back to verify
-              </span>
-            </button>
-
-            {baselineRun && verificationRun && (
-              <button className="btn" onClick={() => onGo(`/runs/compare?left=${baselineRun.id}&right=${verificationRun.id}`)}>
-                <span className="row" style={{ gap: 8 }}>
-                  <GitCompare size={14} /> Open compare
-                </span>
-              </button>
-            )}
-          </div>
-
-          <div className="hr" />
-
-          <div className="box" style={{ padding: 14 }}>
-            <div className="kicker">Comparability</div>
-            <div className="text" style={{ marginTop: 8 }}>
-              {compareOk ? "PASS" : "FAIL"} — if fail, verdict must ABSTAIN (not warn).
-            </div>
-          </div>
-        </Panel>
-
-        <Panel meta="Output" title="Verdict decision" right={<Chip tone={computed.status === "CONFIDENT" ? "ok" : "bad"}>{computed.label}</Chip>}>
-          {computed.status === "CONFIDENT" ? (
-            <div className="box" style={{ padding: 14, border: "1px solid rgba(34,197,94,0.20)" }}>
-              <div className="kicker">Repeatable once (CONFIDENT)</div>
-              <div className="text" style={{ marginTop: 8 }}>
-                Verdict can only be set when comparability passes and evidence shows improvement on the comparable ruler.
-              </div>
-            </div>
-          ) : (
-            <AbstainBanner
-              reasons={computed.reasons}
-              body={
-                <div className="text" style={{ marginTop: 8 }}>
-                  This is not “being cautious.” It’s being clean: missing comparability or incomplete evidence blocks claims.
-                </div>
-              }
-            />
-          )}
-
-          <div className="hr" />
-
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            <button
-              className="btn btn--primary"
-              disabled={locked?.status === "CONFIDENT" || locked?.status === "ABSTAIN"}
-              onClick={() => setVerdict(computed)}
-              title={locked ? "Verdict already set (POC lock). In production, this is versioned." : "Set verdict"}
-            >
-              <span className="row" style={{ gap: 8 }}>
-                <Gavel size={14} /> Set verdict
-              </span>
-            </button>
-          </div>
-
-          {locked && (
-            <div className="box" style={{ padding: 14, marginTop: 12 }}>
-              <div className="kicker">Current verdict (stored)</div>
-              <div style={{ fontWeight: 800, marginTop: 8 }}>{locked.label}</div>
-              <div className="kicker" style={{ marginTop: 6 }}>{locked.when}</div>
-            </div>
-          )}
-        </Panel>
-      </div>
-    </div>
-  );
-}
 
 function CaseReadoutPage({ data, setData, onGo, theCase }) {
   if (!theCase) {
