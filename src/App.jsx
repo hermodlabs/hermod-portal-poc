@@ -11,6 +11,7 @@ import {
   CaseNewPage,
   CaseDetailPage,
   CaseDefinePage,
+  CaseVerifyPage,
   RunNewPage,
   RunProvenancePage,
   OverviewPage,
