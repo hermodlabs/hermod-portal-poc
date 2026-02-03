@@ -24,6 +24,7 @@ import {
   RunTimelinePage,
   CaseBaselinePage,
   CaseTriggersPage,
+  CaseEvidencePage,
   RoomLayoutPage,
   CasePocketsPage,
   RunPocketsPage,
