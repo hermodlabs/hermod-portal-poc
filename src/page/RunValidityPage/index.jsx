@@ -18,6 +18,28 @@ import {
   Fingerprint,
 } from "lucide-react";
 
+function GateEditorRow({ k, v, onChange }) {
+  return (
+    <div className="gateRow">
+      <div>
+        <div style={{ fontWeight: 700 }}>{prettyGateName(k)}</div>
+        <div className="kicker" style={{ marginTop: 4 }}>
+          {CRITICAL_GATES.includes(k) ? "Critical (drives ABSTAIN)" : "Secondary (still matters)"}
+        </div>
+      </div>
+
+      <div className="row" style={{ gap: 10 }}>
+        <select className="gateSelect" value={v} onChange={(e) => onChange(e.target.value)}>
+          <option value="pass">Pass</option>
+          <option value="unknown">Unknown</option>
+          <option value="fail">Fail</option>
+        </select>
+        <Chip tone={gateTone(v)}>{gateLabel(v)}</Chip>
+      </div>
+    </div>
+  );
+}
+
 export function RunValidityPage({ data, setData, onGo, run, engine }) {
   if (!run) {
     return (

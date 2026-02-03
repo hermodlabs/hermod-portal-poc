@@ -132,53 +132,6 @@ export {SitesPage} from "./SitesPage";
 
 
 
-/* =========================================================
-   I) UI WIDGETS — add these small components near your atoms
-   ========================================================= */
-
-function GateRow({ name, value }) {
-  const Icon = gateIcon(value);
-  return (
-    <div className="gateRow">
-      <div className="row" style={{ gap: 10 }}>
-        <div className="taskIcon" style={{ width: 34, height: 34 }}>
-          <Icon size={16} />
-        </div>
-        <div>
-          <div style={{ fontWeight: 700 }}>{name}</div>
-          <div className="kicker" style={{ marginTop: 4 }}>
-            {name.includes("Sensor") ? "If unknown → ABSTAIN downstream" : "Contributes to validity posture"}
-          </div>
-        </div>
-      </div>
-      <Chip tone={gateTone(value)}>{gateLabel(value)}</Chip>
-    </div>
-  );
-}
-
-function GateEditorRow({ k, v, onChange }) {
-  return (
-    <div className="gateRow">
-      <div>
-        <div style={{ fontWeight: 700 }}>{prettyGateName(k)}</div>
-        <div className="kicker" style={{ marginTop: 4 }}>
-          {CRITICAL_GATES.includes(k) ? "Critical (drives ABSTAIN)" : "Secondary (still matters)"}
-        </div>
-      </div>
-
-      <div className="row" style={{ gap: 10 }}>
-        <select className="gateSelect" value={v} onChange={(e) => onChange(e.target.value)}>
-          <option value="pass">Pass</option>
-          <option value="unknown">Unknown</option>
-          <option value="fail">Fail</option>
-        </select>
-        <Chip tone={gateTone(v)}>{gateLabel(v)}</Chip>
-      </div>
-    </div>
-  );
-}
-
-
 export function RunTimelinePage({ data, setData, onGo, run }) {
   if (!run) {
     return (
