@@ -25,6 +25,27 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
+function GateRow({ name, value }) {
+  const Icon = gateIcon(value);
+  return (
+    <div className="gateRow">
+      <div className="row" style={{ gap: 10 }}>
+        <div className="taskIcon" style={{ width: 34, height: 34 }}>
+          <Icon size={16} />
+        </div>
+        <div>
+          <div style={{ fontWeight: 700 }}>{name}</div>
+          <div className="kicker" style={{ marginTop: 4 }}>
+            {name.includes("Sensor") ? "If unknown → ABSTAIN downstream" : "Contributes to validity posture"}
+          </div>
+        </div>
+      </div>
+      <Chip tone={gateTone(value)}>{gateLabel(value)}</Chip>
+    </div>
+  );
+}
+
+
 export function CaseEvidencePage({ data, setData, onGo, theCase }) {
   if (!theCase) {
     return (
