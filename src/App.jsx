@@ -101,18 +101,7 @@ import {
 import { createPortalEngine } from "./portal_engine.js";
 import { Clock, IdGen, Telemetry } from "./infra.js";
 
-
-
-
-// tiny utils
-function cx(...xs) {
-  return xs.filter(Boolean).join(" ");
-}
-
-
-function clamp01(x) {
-  return Math.max(0, Math.min(1, x));
-}
+import { cx, clamp01 } from "./algorithms";
 
 function makeSeedData() {
   /**
