@@ -8,6 +8,7 @@ import {
 
 import {
   scorePocket,
+  riskColor
 } from "../../algorithms";
 
 import {

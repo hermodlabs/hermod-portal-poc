@@ -1,5 +1,7 @@
 import {
-  Ban
+  Ban,
+  MapPin,
+  ArrowRight
 } from "lucide-react";
 
 const cx = (...xs) => xs.filter(Boolean).join(" ");
