@@ -20,6 +20,7 @@ import {
   ArrowLeft,
   CalendarClock,
   ListOrdered,
+  Map as MapIcon
 } from "lucide-react";
 
 export function RunProvenancePage({ data, setData, onGo, run }) {

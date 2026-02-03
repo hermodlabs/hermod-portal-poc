@@ -4,10 +4,15 @@ import {
   Header,
   Panel,
   Chip,
+  AbstainBanner
 } from "../../component";
 
 import {
   computeAbstain,
+  prettyGateName,
+  gateTone,
+  gateLabel,
+  CRITICAL_GATES
 } from "../../algorithms";
 
 import {

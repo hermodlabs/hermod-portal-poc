@@ -4,6 +4,7 @@ import {
   Header,
   Panel,
   Chip,
+  AbstainBanner
 } from "../../component";
 
 import {
@@ -19,46 +20,6 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 
-function AbstainBanner({ reasons, body }) {
-  return (
-    <div className="abstain">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <div>
-          <div className="kicker">Hard stop</div>
-          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6 }}>
-            🚫 ABSTAIN — you may not interpret this
-          </div>
-        </div>
-        <Chip tone="bad">
-          <Ban size={14} /> ABSTAIN
-        </Chip>
-      </div>
-
-      <div className="text" style={{ marginTop: 10 }}>
-        {body}
-      </div>
-
-      <div className="hr" />
-
-      <div className="kicker">Reasons</div>
-      <ul className="ul" style={{ marginTop: 10 }}>
-        {reasons.map((r, i) => (
-          <li key={i}>
-            <b>{r}</b>
-          </li>
-        ))}
-      </ul>
-
-      <div className="hr" />
-
-      <button className="btn btn--blocked" disabled title="Interpretation is blocked by ABSTAIN">
-        <span className="row" style={{ gap: 8 }}>
-          <Ban size={14} /> Interpretation blocked
-        </span>
-      </button>
-    </div>
-  );
-}
 
 export function RunReceiptsPage({ data, setData, onGo, run, engine }) {
   if (!run) {
