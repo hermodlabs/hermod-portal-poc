@@ -13,6 +13,7 @@ import {
   prettyGateName,
   computeAbstain,
   getSiteRoomLabel,
+  gateIcon
 } from "../../algorithms";
 
 import {

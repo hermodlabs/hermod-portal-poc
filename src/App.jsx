@@ -11,7 +11,6 @@ import {
   useNavigate,
   useParams,
   useSearchParams,
-  useOutletContext,
   useLocation,
 } from "react-router-dom";
 
@@ -58,55 +57,15 @@ import {
 import { Header, Chip, Panel, Stat } from "./component";
 
 import {
-  BadgeCheck,
   Building2,
-  DoorOpen,
-  Grid3X3,
   Home,
-  LayoutDashboard,
   LogOut,
-  MapPinned,
-  Settings,
   ShieldCheck,
-  UserPlus,
   Users,
   Wrench,
-  ArrowRight,
   ClipboardList,
-  FilePlus2,
-  Tag,
-  Timer,
-  Layers,
-  Ban,
-  CheckCircle2,
-  HelpCircle,
-  ShieldAlert,
-  ShieldX,
-  UploadCloud,
   FileText,
-  Fingerprint,
-  Database,
-  ClipboardCheck,
-  ArrowLeft,
-  CalendarClock,
-  Link2,
-  Waves,
-  ListChecks,
-  ChevronRight,
-  Map as MapIcon,
-  MapPin,
-  Layers as LayersIcon,
-  ListOrdered,
-  Compass,
-  Target,
-  GitCompare,
-  Gavel,
-  XCircle,
-  FileOutput,
   FolderArchive,
-  FileSearch,
-  FileDown,
-  ClipboardSignature,
 } from "lucide-react";
 
 import { createPortalEngine } from "./portal_engine.js";
@@ -610,11 +569,6 @@ function AuthedLayout({ auth, onLogout }) {
       </div>
     </>
   );
-}
-
-function useGo() {
-  const { go } = useOutletContext();
-  return go;
 }
 
 function useGoNavigate() {
